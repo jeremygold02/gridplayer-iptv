@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GridPlayer IPTV</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 6.5h16v12H4z"/><path d="m9 6.5 3-3 3 3"/><path d="M8 10h8M8 14h5"/></svg>
+          </div>
+          <div>
+            <h1>GridPlayer IPTV</h1>
+            <span id="channelSummary">No channels loaded</span>
+          </div>
+        </div>
+        <nav class="toolbar" aria-label="Primary actions">
+          <button class="tool-button" id="importFileButton" type="button">
+            <svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 19h14"/></svg>
+            <span>Import M3U</span>
+          </button>
+          <button class="tool-button" id="importUrlButton" type="button">
+            <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.2 1.2"/><path d="M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.2-1.2"/></svg>
+            <span>Add URL</span>
+          </button>
+          <button class="tool-button" id="refreshButton" type="button">
+            <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v6h-6"/></svg>
+            <span>Refresh</span>
+          </button>
+          <button class="tool-button" id="settingsButton" type="button">
+            <svg viewBox="0 0 24 24"><path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6z"/><path d="m19 12 .9-2.1-2-3.4-2.3.3a7.5 7.5 0 0 0-1.8-1L12.8 3H9.2l-.9 2.8a7.5 7.5 0 0 0-1.8 1l-2.3-.3-2 3.4L3 12l-.9 2.1 2 3.4 2.3-.3a7.5 7.5 0 0 0 1.8 1l.9 2.8h3.6l.9-2.8a7.5 7.5 0 0 0 1.8-1l2.3.3 2-3.4z"/></svg>
+            <span>Settings</span>
+          </button>
+        </nav>
+        <div class="grid-status" id="gridStatus">
+          <span class="status-dot"></span>
+          <span>GridPlayer</span>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="sidebar">
+          <section>
+            <div class="section-title">Playlists</div>
+            <div id="sourceList" class="source-list"></div>
+          </section>
+          <section>
+            <div class="section-title">Filters</div>
+            <button class="nav-row active" data-filter-kind="all" type="button">
+              <span class="nav-icon">#</span>
+              <span>All Channels</span>
+              <span id="allCount" class="count">0</span>
+            </button>
+            <button class="nav-row" data-filter-kind="favorites" type="button">
+              <span class="nav-icon">☆</span>
+              <span>Favorites</span>
+              <span id="favoriteCount" class="count">0</span>
+            </button>
+          </section>
+          <section>
+            <div class="section-title">Categories</div>
+            <div id="categoryList" class="category-list"></div>
+          </section>
+        </aside>
+
+        <section class="channel-panel">
+          <div class="panel-head">
+            <div>
+              <h2>Live Channels</h2>
+              <span id="resultCount">0 visible</span>
+            </div>
+            <label class="search-box">
+              <svg viewBox="0 0 24 24"><path d="m21 21-4.3-4.3"/><circle cx="11" cy="11" r="7"/></svg>
+              <input id="searchInput" type="search" placeholder="Search channels and groups">
+            </label>
+          </div>
+          <div class="channel-table">
+            <div class="table-header">
+              <span>Channel</span>
+              <span>Group</span>
+              <span>Status</span>
+              <span>Actions</span>
+            </div>
+            <div id="channelList" class="channel-list"></div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="detail-bar" id="detailBar">
+        <div class="detail-empty">Select a channel</div>
+      </footer>
+    </div>
+
+    <input id="fileInput" type="file" accept=".m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain" hidden>
+
+    <div class="modal-backdrop" id="urlModal" hidden>
+      <form class="modal" id="urlForm">
+        <div class="modal-head">
+          <h2>Add Playlist URL</h2>
+          <button class="icon-button" data-close-modal type="button" title="Close">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <label>
+          <span>Name</span>
+          <input id="urlNameInput" type="text" placeholder="My IPTV Playlist">
+        </label>
+        <label>
+          <span>URL</span>
+          <input id="urlInput" type="url" placeholder="https://example.com/playlist.m3u">
+        </label>
+        <div class="modal-actions">
+          <button class="secondary-button" data-close-modal type="button">Cancel</button>
+          <button class="primary-button" type="submit">Import URL</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="modal-backdrop" id="settingsModal" hidden>
+      <form class="modal" id="settingsForm">
+        <div class="modal-head">
+          <h2>Settings</h2>
+          <button class="icon-button" data-close-modal type="button" title="Close">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <label>
+          <span>GridPlayer executable</span>
+          <input id="gridplayerPathInput" type="text" placeholder="C:\Program Files (x86)\GridPlayer\GridPlayer.exe">
+        </label>
+        <div class="modal-actions">
+          <button class="secondary-button" data-close-modal type="button">Cancel</button>
+          <button class="primary-button" type="submit">Save Settings</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
