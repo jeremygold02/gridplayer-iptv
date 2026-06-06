@@ -193,17 +193,17 @@ svg {
 
 .sidebar {
   overflow: auto;
-  padding: 14px 10px;
+  padding: 10px 8px;
 }
 
 .sidebar section + section {
-  margin-top: 20px;
-  padding-top: 16px;
+  margin-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--line-soft);
 }
 
 .section-title {
-  margin: 0 8px 8px;
+  margin: 0 6px 6px;
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
@@ -213,17 +213,17 @@ svg {
 .source-list,
 .category-list {
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .source-row,
 .nav-row {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
   width: 100%;
-  min-height: 44px;
-  padding: 7px 9px;
+  min-height: 36px;
+  padding: 5px 7px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
@@ -260,11 +260,11 @@ svg {
 
 .nav-icon {
   display: grid;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   place-items: center;
   color: var(--teal);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .channel-panel {
@@ -278,7 +278,7 @@ svg {
   grid-template-columns: auto minmax(260px, 460px);
   align-items: center;
   gap: 20px;
-  padding: 14px 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--line);
   background: rgba(18, 23, 23, 0.9);
 }
@@ -310,7 +310,7 @@ svg {
 
 .channel-table {
   display: grid;
-  grid-template-rows: 38px minmax(0, 1fr);
+  grid-template-rows: 34px minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -374,8 +374,8 @@ svg {
 }
 
 .channel-row {
-  min-height: 62px;
-  padding: 8px 16px;
+  min-height: 44px;
+  padding: 4px 12px;
   border-bottom: 1px solid var(--line-soft);
   background: rgba(17, 22, 22, 0.66);
 }
@@ -394,13 +394,13 @@ svg {
   display: flex;
   align-items: center;
   min-width: 0;
-  gap: 10px;
+  gap: 8px;
 }
 
 .logo {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   place-items: center;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -432,7 +432,7 @@ svg {
 .channel-subtitle,
 .detail-subtitle {
   overflow: hidden;
-  margin-top: 4px;
+  margin-top: 2px;
   color: var(--muted);
   font-size: 12px;
   text-overflow: ellipsis;
@@ -443,12 +443,12 @@ svg {
   width: fit-content;
   max-width: 100%;
   overflow: hidden;
-  padding: 5px 8px;
+  padding: 3px 7px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 5px;
   background: #111818;
   color: #d7dfdd;
-  font-size: 12px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -481,8 +481,8 @@ svg {
 
 .icon-button {
   display: inline-grid;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   place-items: center;
   border-radius: 6px;
 }
