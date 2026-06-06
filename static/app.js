@@ -1,4 +1,6 @@
 const els = {};
+const ZOOM_LEVELS = [75, 90, 100, 110, 125, 150];
+const BROWSER_PREF_KEY = "gridplayer-iptv-ui";
 let appState = null;
 let selectedChannelId = null;
 let filters = {
@@ -10,6 +12,9 @@ let filters = {
 let sortState = {
   key: null,
   direction: "default",
+};
+let uiPrefs = {
+  zoom: 100,
 };
 
 function $(id) {
@@ -61,7 +66,83 @@ async function loadState() {
   const data = await api("/api/state");
   appState = data;
   filters.sourceId = filters.sourceId || data.selected_source_id || "all";
+  hydrateUiPrefs();
   render();
+}
+
+function desktopRuntime() {
+  return Boolean(appState?.runtime?.desktop);
+}
+
+function readBrowserPrefs() {
+  try {
+    return JSON.parse(window.localStorage.getItem(BROWSER_PREF_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeBrowserPrefs(nextPrefs) {
+  try {
+    window.localStorage.setItem(BROWSER_PREF_KEY, JSON.stringify(nextPrefs));
+  } catch {
+    // localStorage can be unavailable in restricted browser contexts.
+  }
+}
+
+function nearestZoom(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 100;
+  return ZOOM_LEVELS.reduce((closest, level) => (
+    Math.abs(level - numeric) < Math.abs(closest - numeric) ? level : closest
+  ), ZOOM_LEVELS[0]);
+}
+
+function hydrateUiPrefs() {
+  const browserPrefs = readBrowserPrefs();
+  uiPrefs.zoom = nearestZoom(desktopRuntime() ? appState?.settings?.ui_zoom : browserPrefs.ui_zoom);
+  applyZoom();
+}
+
+function applyZoom() {
+  document.documentElement.style.setProperty("--ui-zoom", String(uiPrefs.zoom / 100));
+  if (els.zoomValue) {
+    els.zoomValue.textContent = `${uiPrefs.zoom}%`;
+  }
+  if (els.zoomOutButton) {
+    els.zoomOutButton.disabled = uiPrefs.zoom <= ZOOM_LEVELS[0];
+  }
+  if (els.zoomInButton) {
+    els.zoomInButton.disabled = uiPrefs.zoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
+  }
+}
+
+async function persistUiPreference(key, value) {
+  if (desktopRuntime()) {
+    const data = await api("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ [key]: value }),
+    });
+    appState = data.state;
+    return;
+  }
+
+  writeBrowserPrefs({ ...readBrowserPrefs(), [key]: value });
+}
+
+async function changeZoom(direction) {
+  const index = ZOOM_LEVELS.indexOf(uiPrefs.zoom);
+  const nextIndex = Math.min(Math.max(index + direction, 0), ZOOM_LEVELS.length - 1);
+  const nextZoom = ZOOM_LEVELS[nextIndex];
+  if (nextZoom === uiPrefs.zoom) return;
+
+  uiPrefs.zoom = nextZoom;
+  applyZoom();
+  try {
+    await persistUiPreference("ui_zoom", nextZoom);
+  } catch (error) {
+    showToast(error.message, "error");
+  }
 }
 
 function filteredChannels() {
@@ -347,6 +428,14 @@ function bindEvents() {
     }
   });
 
+  els.zoomOutButton.addEventListener("click", () => {
+    changeZoom(-1);
+  });
+
+  els.zoomInButton.addEventListener("click", () => {
+    changeZoom(1);
+  });
+
   els.searchInput.addEventListener("input", () => {
     filters.search = els.searchInput.value;
     renderChannels();
@@ -440,6 +529,7 @@ function bindEvents() {
 function initEls() {
   [
     "channelSummary", "importFileButton", "importUrlButton", "refreshButton", "settingsButton",
+    "zoomOutButton", "zoomValue", "zoomInButton",
     "gridStatus", "sourceList", "allCount", "favoriteCount", "categoryList", "resultCount",
     "searchInput", "channelList", "detailBar", "fileInput", "urlModal",
     "urlForm", "urlNameInput", "urlInput", "settingsModal", "settingsForm",

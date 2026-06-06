@@ -51,6 +51,7 @@ QUEUE_EXPORT_PATH = DATA_DIR / "gridplayer-queue.m3u"
 
 MAX_QUEUE_ITEMS = 16
 HTTP_TIMEOUT_SECONDS = 18
+DESKTOP_MODE = False
 
 ATTR_RE = re.compile(r'([A-Za-z0-9_-]+)="([^"]*)"')
 
@@ -73,6 +74,7 @@ def default_state() -> dict[str, Any]:
             "grid_size": "3x3",
             "gridplayer_path": "",
             "auto_open_queue": False,
+            "ui_zoom": 100,
         },
     }
 
@@ -339,6 +341,9 @@ def public_state() -> dict[str, Any]:
             "available": gridplayer_path is not None,
             "path": str(gridplayer_path) if gridplayer_path else "",
         },
+        "runtime": {
+            "desktop": DESKTOP_MODE,
+        },
     }
 
 
@@ -567,7 +572,7 @@ def api_export_queue():
 @app.post("/api/settings")
 def api_settings():
     payload = request.get_json(silent=True) or {}
-    allowed = {"grid_size", "gridplayer_path", "auto_open_queue"}
+    allowed = {"grid_size", "gridplayer_path", "auto_open_queue", "ui_zoom"}
     with state_lock:
         state = read_state()
         settings = state.setdefault("settings", default_state()["settings"])
@@ -592,6 +597,8 @@ def serve_app(host: str, port: int) -> None:
 
 
 def main() -> None:
+    global DESKTOP_MODE
+
     parser = argparse.ArgumentParser(description="GridPlayer IPTV desktop client")
     parser.add_argument("--server", action="store_true", help="Run only the Flask server.")
     parser.add_argument("--host", default="127.0.0.1")
@@ -604,10 +611,12 @@ def main() -> None:
     url = f"http://{args.host}:{port}"
 
     if args.server or webview is None:
+        DESKTOP_MODE = False
         print(f"GridPlayer IPTV running at {url}")
         serve_app(args.host, port)
         return
 
+    DESKTOP_MODE = True
     server_thread = threading.Thread(target=serve_app, args=(args.host, port), daemon=True)
     server_thread.start()
     time.sleep(0.45)

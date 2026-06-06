@@ -1,5 +1,6 @@
 :root {
   color-scheme: dark;
+  --ui-zoom: 1;
   --bg: #0a0d0d;
   --bg-soft: #101414;
   --panel: #141919;
@@ -55,8 +56,10 @@ svg {
 .app-shell {
   display: grid;
   grid-template-rows: 58px minmax(0, 1fr) 154px;
+  width: calc(100% / var(--ui-zoom));
   height: 100vh;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 18%), var(--bg);
+  zoom: var(--ui-zoom);
 }
 
 .topbar {
@@ -107,6 +110,42 @@ svg {
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+.zoom-control {
+  display: inline-flex;
+  align-items: center;
+  height: 38px;
+  border: 1px solid var(--line);
+  background: #111616;
+}
+
+.zoom-control .icon-button {
+  width: 34px;
+  height: 36px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.zoom-control .icon-button:disabled {
+  color: var(--subtle);
+  cursor: default;
+  opacity: 0.45;
+}
+
+.zoom-control .icon-button:disabled:hover {
+  background: transparent;
+}
+
+.zoom-control span {
+  min-width: 48px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
 }
 
 .tool-button,
