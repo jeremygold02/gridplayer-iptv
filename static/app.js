@@ -224,8 +224,6 @@ function syncSelectedChannel() {
 
 function renderStatus() {
   const total = appState.channels.length;
-  const sourceCount = appState.sources.length;
-  els.channelSummary.textContent = `${total} channels across ${sourceCount} playlist${sourceCount === 1 ? "" : "s"}`;
   els.allCount.textContent = total;
   els.favoriteCount.textContent = appState.favorites.length;
 }
@@ -524,7 +522,7 @@ function bindEvents() {
 
 function initEls() {
   [
-    "channelSummary", "importFileButton", "importUrlButton", "refreshButton", "settingsButton",
+    "importFileButton", "importUrlButton", "refreshButton", "settingsButton",
     "zoomOutButton", "zoomValue", "zoomInButton",
     "sourceList", "allCount", "favoriteCount", "categoryList", "resultCount",
     "searchInput", "channelList", "detailBar", "fileInput", "urlModal",
