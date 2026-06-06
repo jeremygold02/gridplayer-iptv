@@ -20,6 +20,7 @@ let uiPrefs = {
   sidebarWidth: 250,
 };
 let sidebarResize = null;
+let sportsRefreshTimer = null;
 
 function $(id) {
   return document.getElementById(id);
@@ -72,6 +73,20 @@ async function loadState() {
   filters.sourceId = filters.sourceId || data.selected_source_id || "all";
   hydrateUiPrefs();
   render();
+  scheduleSportsRefresh();
+}
+
+function scheduleSportsRefresh() {
+  window.clearInterval(sportsRefreshTimer);
+  const seconds = Number(appState?.sports?.refresh_seconds) || 1800;
+  sportsRefreshTimer = window.setInterval(async () => {
+    try {
+      appState = await api("/api/state");
+      render();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }, seconds * 1000);
 }
 
 function desktopRuntime() {
@@ -199,7 +214,7 @@ function filteredChannels() {
     .filter((channel) => filters.kind !== "favorites" || favorites.has(channel.id))
     .filter((channel) => {
       if (!search) return true;
-      return [channel.name, channel.group, sourceName(channel.source_id)]
+      return [channel.name, channel.group, sourceName(channel.source_id), channel.game?.text, channel.game?.status_long]
         .join(" ")
         .toLowerCase()
         .includes(search);
@@ -224,9 +239,49 @@ function filteredChannels() {
 
 function logoHtml(channel, extraClass = "") {
   if (channel.logo) {
-    return `<span class="logo ${extraClass}"><img src="${escapeHtml(channel.logo)}" alt="" onerror="this.remove(); this.parentElement.textContent='${initials(channel.name)}';"></span>`;
+    return `<span class="logo ${extraClass}"><img src="${escapeHtml(channel.logo)}" alt="" onerror="const parent=this.parentElement; this.remove(); if(parent) parent.textContent='${initials(channel.name)}';"></span>`;
   }
   return `<span class="logo ${extraClass}">${initials(channel.name)}</span>`;
+}
+
+function gameInfo(channel) {
+  return channel.game || {
+    kind: "stream",
+    text: "Stream",
+    subtext: "No game lookup",
+    start_time: "",
+    status_long: "No game lookup",
+    matched: false,
+  };
+}
+
+function gameStatusHtml(channel) {
+  const game = gameInfo(channel);
+  const subtext = game.score || game.subtext || game.start_time || "";
+  return `
+    <div class="game-status ${escapeHtml(game.kind)}">
+      <strong>${escapeHtml(game.text || "Unknown")}</strong>
+      ${subtext ? `<small>${escapeHtml(subtext)}</small>` : ""}
+    </div>
+  `;
+}
+
+function detailMetaItem(label, value, note = "") {
+  return `
+    <span>
+      ${escapeHtml(label)}
+      <strong>${escapeHtml(value || "Unknown")}</strong>
+      ${note ? `<small>${escapeHtml(note)}</small>` : ""}
+    </span>
+  `;
+}
+
+function streamType(url) {
+  const cleanUrl = String(url || "").split("?")[0].toLowerCase();
+  const extension = cleanUrl.match(/\.([a-z0-9]{2,5})$/)?.[1];
+  if (extension) return extension.toUpperCase();
+  if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")) return "HTTP";
+  return "URL";
 }
 
 function escapeHtml(value) {
@@ -308,6 +363,7 @@ function renderCategories() {
 }
 
 function renderChannels() {
+  if (!appState) return;
   const channels = filteredChannels();
   const favorites = new Set(appState.favorites);
   els.resultCount.textContent = `${channels.length} visible`;
@@ -326,7 +382,7 @@ function renderChannels() {
         </div>
       </div>
       <div class="group-pill">${escapeHtml(channel.group)}</div>
-      <div class="live-badge">LIVE</div>
+      ${gameStatusHtml(channel)}
       <div class="row-actions">
         <button class="icon-button ${favorites.has(channel.id) ? "active" : ""}" data-action="favorite" title="Favorite" type="button">☆</button>
         <button class="icon-button" data-action="open" title="Open in GridPlayer" type="button">
@@ -343,6 +399,7 @@ function renderDetail() {
     els.detailPanel.innerHTML = `<div class="detail-empty">Click on a channel to view more info</div>`;
     return;
   }
+  const game = gameInfo(channel);
 
   els.detailPanel.innerHTML = `
     <div class="detail-content">
@@ -354,9 +411,10 @@ function renderDetail() {
         </div>
       </div>
       <div class="detail-meta">
-        <span>Stream<strong>${channel.url.split("?")[0].split(".").pop()?.toUpperCase() || "URL"}</strong></span>
-        <span>Status<strong>Live</strong></span>
-        <span>Source<strong>${escapeHtml(sourceName(channel.source_id))}</strong></span>
+        ${detailMetaItem("Game", game.text, game.score || game.status_long)}
+        ${detailMetaItem("Start", game.start_time || (game.kind === "stream" ? "N/A" : "Unknown"))}
+        ${detailMetaItem("Source", sourceName(channel.source_id))}
+        ${detailMetaItem("Stream", streamType(channel.url))}
       </div>
       <div class="detail-actions" data-channel-id="${channel.id}">
         <button class="primary-button" data-detail-action="open" type="button">
