@@ -217,8 +217,8 @@ function renderSortHeaders() {
 function syncSelectedChannel() {
   const visible = filteredChannels();
   const visibleIds = new Set(visible.map((channel) => channel.id));
-  if (!selectedChannelId || !visibleIds.has(selectedChannelId)) {
-    selectedChannelId = visible[0]?.id || null;
+  if (selectedChannelId && !visibleIds.has(selectedChannelId)) {
+    selectedChannelId = null;
   }
 }
 
@@ -296,11 +296,11 @@ function renderChannels() {
 function renderDetail() {
   const channel = selectedChannelId ? channelById(selectedChannelId) : null;
   if (!channel) {
-    els.detailBar.innerHTML = `<div class="detail-empty">Select a channel</div>`;
+    els.detailPanel.innerHTML = `<div class="detail-empty">Click on a channel to view more info</div>`;
     return;
   }
 
-  els.detailBar.innerHTML = `
+  els.detailPanel.innerHTML = `
     <div class="detail-content">
       <div class="detail-main">
         ${logoHtml(channel, "detail-logo")}
@@ -506,7 +506,7 @@ function bindEvents() {
     }
   });
 
-  els.detailBar.addEventListener("click", async (event) => {
+  els.detailPanel.addEventListener("click", async (event) => {
     const actions = event.target.closest(".detail-actions");
     const action = event.target.closest("[data-detail-action]")?.dataset.detailAction;
     if (!actions || !action) return;
@@ -525,7 +525,7 @@ function initEls() {
     "importFileButton", "importUrlButton", "refreshButton", "settingsButton",
     "zoomOutButton", "zoomValue", "zoomInButton",
     "sourceList", "allCount", "favoriteCount", "categoryList", "resultCount",
-    "searchInput", "channelList", "detailBar", "fileInput", "urlModal",
+    "searchInput", "channelList", "detailPanel", "fileInput", "urlModal",
     "urlForm", "urlNameInput", "urlInput", "settingsModal", "settingsForm",
     "gridplayerPathInput", "toast",
   ].forEach((id) => {

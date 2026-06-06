@@ -55,7 +55,7 @@ svg {
 
 .app-shell {
   display: grid;
-  grid-template-rows: 58px minmax(0, 1fr) 154px;
+  grid-template-rows: 58px minmax(0, 1fr);
   width: calc(100% / var(--ui-zoom));
   height: 100vh;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 18%), var(--bg);
@@ -180,12 +180,13 @@ svg {
 
 .workspace {
   display: grid;
-  grid-template-columns: 250px minmax(560px, 1fr);
+  grid-template-columns: 250px minmax(520px, 1fr) 320px;
   min-height: 0;
 }
 
 .sidebar,
-.channel-panel {
+.channel-panel,
+.detail-panel {
   min-height: 0;
   border-right: 1px solid var(--line);
   background: rgba(15, 19, 19, 0.94);
@@ -271,6 +272,12 @@ svg {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   border-right: 1px solid var(--line);
+}
+
+.detail-panel {
+  overflow: auto;
+  border-right: 0;
+  background: rgba(13, 17, 17, 0.98);
 }
 
 .panel-head {
@@ -520,33 +527,36 @@ svg {
   color: var(--text);
 }
 
-.detail-bar {
-  display: grid;
-  align-items: center;
-  border-top: 1px solid var(--line);
-  background: rgba(13, 17, 17, 0.98);
-}
-
 .detail-content {
   display: grid;
-  grid-template-columns: minmax(300px, 1fr) minmax(220px, 0.55fr) auto;
-  align-items: center;
-  gap: 22px;
-  padding: 16px 22px;
+  align-content: start;
+  gap: 18px;
+  min-height: 100%;
+  padding: 18px;
+}
+
+.detail-panel .detail-main {
+  align-items: flex-start;
 }
 
 .detail-logo {
-  width: 74px;
-  height: 74px;
-  font-size: 23px;
+  width: 64px;
+  height: 64px;
+  font-size: 20px;
 }
 
 .detail-meta {
   display: grid;
-  grid-template-columns: repeat(3, minmax(90px, 1fr));
-  gap: 9px 18px;
+  gap: 9px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.detail-meta span {
+  display: block;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  background: #101616;
 }
 
 .detail-meta strong {
@@ -556,12 +566,21 @@ svg {
   font-weight: 650;
 }
 
+.detail-panel .detail-actions {
+  justify-content: stretch;
+}
+
+.detail-panel .primary-button {
+  width: 100%;
+}
+
 .detail-empty,
 .empty-state {
   display: grid;
   min-height: 120px;
   place-items: center;
   color: var(--muted);
+  text-align: center;
 }
 
 .modal-backdrop {
@@ -630,7 +649,7 @@ svg {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 176px;
+  bottom: 24px;
   transform: translateX(-50%);
   max-width: 520px;
   padding: 11px 14px;
@@ -652,7 +671,7 @@ svg {
   }
 
   .workspace {
-    grid-template-columns: 220px minmax(520px, 1fr);
+    grid-template-columns: 220px minmax(460px, 1fr) 280px;
   }
 
   .panel-head {
