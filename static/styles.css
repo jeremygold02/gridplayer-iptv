@@ -64,7 +64,7 @@ svg {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto 260px;
+  grid-template-columns: minmax(260px, 1fr) auto;
   align-items: center;
   gap: 18px;
   padding: 0 18px;
@@ -176,33 +176,6 @@ svg {
   padding: 0 12px;
   border-radius: 6px;
   font-size: 13px;
-}
-
-.grid-status {
-  justify-self: end;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 190px;
-  height: 38px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  background: #111616;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.status-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 0 3px rgba(91, 208, 97, 0.12);
-}
-
-.status-dot.offline {
-  background: var(--red);
-  box-shadow: 0 0 0 3px rgba(255, 90, 95, 0.12);
 }
 
 .workspace {

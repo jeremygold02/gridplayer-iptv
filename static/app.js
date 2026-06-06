@@ -228,10 +228,6 @@ function renderStatus() {
   els.channelSummary.textContent = `${total} channels across ${sourceCount} playlist${sourceCount === 1 ? "" : "s"}`;
   els.allCount.textContent = total;
   els.favoriteCount.textContent = appState.favorites.length;
-  els.gridStatus.innerHTML = `
-    <span class="status-dot ${appState.gridplayer.available ? "" : "offline"}"></span>
-    <span>GridPlayer ${appState.gridplayer.available ? "Ready" : "Missing"}</span>
-  `;
 }
 
 function renderSources() {
@@ -530,7 +526,7 @@ function initEls() {
   [
     "channelSummary", "importFileButton", "importUrlButton", "refreshButton", "settingsButton",
     "zoomOutButton", "zoomValue", "zoomInButton",
-    "gridStatus", "sourceList", "allCount", "favoriteCount", "categoryList", "resultCount",
+    "sourceList", "allCount", "favoriteCount", "categoryList", "resultCount",
     "searchInput", "channelList", "detailBar", "fileInput", "urlModal",
     "urlForm", "urlNameInput", "urlInput", "settingsModal", "settingsForm",
     "gridplayerPathInput", "toast",
