@@ -319,6 +319,43 @@ svg {
   text-transform: uppercase;
 }
 
+.sort-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-transform: inherit;
+}
+
+.sort-header::after {
+  color: var(--subtle);
+  content: "↕";
+  font-size: 10px;
+}
+
+.sort-header.active {
+  color: var(--text);
+}
+
+.sort-header[data-direction="asc"]::after {
+  color: var(--teal);
+  content: "↑";
+}
+
+.sort-header[data-direction="desc"]::after {
+  color: var(--teal);
+  content: "↓";
+}
+
 .channel-list {
   min-height: 0;
   overflow: auto;

@@ -7,6 +7,10 @@ let filters = {
   kind: "all",
   search: "",
 };
+let sortState = {
+  key: null,
+  direction: "default",
+};
 
 function $(id) {
   return document.getElementById(id);
@@ -64,7 +68,7 @@ function filteredChannels() {
   if (!appState) return [];
   const search = filters.search.trim().toLowerCase();
   const favorites = new Set(appState.favorites);
-  return appState.channels
+  const channels = appState.channels
     .filter((channel) => filters.sourceId === "all" || channel.source_id === filters.sourceId)
     .filter((channel) => filters.category === "all" || channel.group === filters.category)
     .filter((channel) => filters.kind !== "favorites" || favorites.has(channel.id))
@@ -76,6 +80,21 @@ function filteredChannels() {
         .includes(search);
     })
     .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+
+  if (!sortState.key || sortState.direction === "default") {
+    return channels;
+  }
+
+  const factor = sortState.direction === "asc" ? 1 : -1;
+  return [...channels].sort((a, b) => {
+    const left = sortState.key === "group" ? a.group : a.name;
+    const right = sortState.key === "group" ? b.group : b.name;
+    const result = String(left || "").localeCompare(String(right || ""), undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+    return result * factor || a.order - b.order || a.name.localeCompare(b.name);
+  });
 }
 
 function logoHtml(channel, extraClass = "") {
@@ -98,10 +117,20 @@ function render() {
   if (!appState) return;
   syncSelectedChannel();
   renderStatus();
+  renderSortHeaders();
   renderSources();
   renderCategories();
   renderChannels();
   renderDetail();
+}
+
+function renderSortHeaders() {
+  document.querySelectorAll("[data-sort-key]").forEach((button) => {
+    const isActive = sortState.key === button.dataset.sortKey && sortState.direction !== "default";
+    button.classList.toggle("active", isActive);
+    button.dataset.direction = isActive ? sortState.direction : "default";
+    button.setAttribute("aria-sort", isActive ? (sortState.direction === "asc" ? "ascending" : "descending") : "none");
+  });
 }
 
 function syncSelectedChannel() {
@@ -320,6 +349,21 @@ function bindEvents() {
 
   els.searchInput.addEventListener("input", () => {
     filters.search = els.searchInput.value;
+    renderChannels();
+  });
+
+  document.querySelector(".table-header").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-sort-key]");
+    if (!button) return;
+    const key = button.dataset.sortKey;
+    if (sortState.key !== key) {
+      sortState = { key, direction: "asc" };
+    } else if (sortState.direction === "asc") {
+      sortState.direction = "desc";
+    } else {
+      sortState = { key: null, direction: "default" };
+    }
+    renderSortHeaders();
     renderChannels();
   });
 
