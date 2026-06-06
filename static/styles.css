@@ -28,6 +28,7 @@ body {
   margin: 0;
   min-width: 1050px;
   min-height: 720px;
+  overflow: hidden;
   background: radial-gradient(circle at 30% 0%, rgba(16, 183, 164, 0.1), transparent 28%), var(--bg);
   color: var(--text);
   font-size: 14px;
@@ -58,9 +59,10 @@ svg {
   display: grid;
   grid-template-rows: 58px minmax(0, 1fr);
   width: calc(100% / var(--ui-zoom));
-  height: 100vh;
+  height: calc(100vh / var(--ui-zoom));
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 18%), var(--bg);
-  zoom: var(--ui-zoom);
+  transform: scale(var(--ui-zoom));
+  transform-origin: top left;
 }
 
 .topbar {
