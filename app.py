@@ -75,6 +75,7 @@ def default_state() -> dict[str, Any]:
             "gridplayer_path": "",
             "auto_open_queue": False,
             "ui_zoom": 100,
+            "ui_sidebar_width": 250,
         },
     }
 
@@ -572,7 +573,7 @@ def api_export_queue():
 @app.post("/api/settings")
 def api_settings():
     payload = request.get_json(silent=True) or {}
-    allowed = {"grid_size", "gridplayer_path", "auto_open_queue", "ui_zoom"}
+    allowed = {"grid_size", "gridplayer_path", "auto_open_queue", "ui_zoom", "ui_sidebar_width"}
     with state_lock:
         state = read_state()
         settings = state.setdefault("settings", default_state()["settings"])

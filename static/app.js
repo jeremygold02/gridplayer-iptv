@@ -1,6 +1,8 @@
 const els = {};
 const ZOOM_LEVELS = [75, 90, 100, 110, 125, 150];
 const BROWSER_PREF_KEY = "gridplayer-iptv-ui";
+const SIDEBAR_MIN_WIDTH = 180;
+const SIDEBAR_MAX_WIDTH = 420;
 let appState = null;
 let selectedChannelId = null;
 let filters = {
@@ -15,7 +17,9 @@ let sortState = {
 };
 let uiPrefs = {
   zoom: 100,
+  sidebarWidth: 250,
 };
+let sidebarResize = null;
 
 function $(id) {
   return document.getElementById(id);
@@ -98,10 +102,18 @@ function nearestZoom(value) {
   ), ZOOM_LEVELS[0]);
 }
 
+function clampSidebarWidth(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 250;
+  return Math.min(Math.max(Math.round(numeric), SIDEBAR_MIN_WIDTH), SIDEBAR_MAX_WIDTH);
+}
+
 function hydrateUiPrefs() {
   const browserPrefs = readBrowserPrefs();
   uiPrefs.zoom = nearestZoom(desktopRuntime() ? appState?.settings?.ui_zoom : browserPrefs.ui_zoom);
+  uiPrefs.sidebarWidth = clampSidebarWidth(desktopRuntime() ? appState?.settings?.ui_sidebar_width : browserPrefs.ui_sidebar_width);
   applyZoom();
+  applySidebarWidth();
 }
 
 function applyZoom() {
@@ -130,6 +142,10 @@ async function persistUiPreference(key, value) {
   writeBrowserPrefs({ ...readBrowserPrefs(), [key]: value });
 }
 
+function applySidebarWidth() {
+  document.documentElement.style.setProperty("--sidebar-width", `${uiPrefs.sidebarWidth}px`);
+}
+
 async function changeZoom(direction) {
   const index = ZOOM_LEVELS.indexOf(uiPrefs.zoom);
   const nextIndex = Math.min(Math.max(index + direction, 0), ZOOM_LEVELS.length - 1);
@@ -143,6 +159,34 @@ async function changeZoom(direction) {
   } catch (error) {
     showToast(error.message, "error");
   }
+}
+
+function startSidebarResize(event) {
+  sidebarResize = {
+    startX: event.clientX,
+    startWidth: uiPrefs.sidebarWidth,
+  };
+  els.sidebarResizer.setPointerCapture(event.pointerId);
+  document.body.classList.add("is-resizing-sidebar");
+}
+
+async function finishSidebarResize() {
+  if (!sidebarResize) return;
+  sidebarResize = null;
+  document.body.classList.remove("is-resizing-sidebar");
+  try {
+    await persistUiPreference("ui_sidebar_width", uiPrefs.sidebarWidth);
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+function updateSidebarResize(event) {
+  if (!sidebarResize) return;
+  const zoomFactor = uiPrefs.zoom / 100 || 1;
+  const delta = (event.clientX - sidebarResize.startX) / zoomFactor;
+  uiPrefs.sidebarWidth = clampSidebarWidth(sidebarResize.startWidth + delta);
+  applySidebarWidth();
 }
 
 function filteredChannels() {
@@ -430,6 +474,11 @@ function bindEvents() {
     changeZoom(1);
   });
 
+  els.sidebarResizer.addEventListener("pointerdown", startSidebarResize);
+  window.addEventListener("pointermove", updateSidebarResize);
+  window.addEventListener("pointerup", finishSidebarResize);
+  window.addEventListener("pointercancel", finishSidebarResize);
+
   els.searchInput.addEventListener("input", () => {
     filters.search = els.searchInput.value;
     renderChannels();
@@ -523,7 +572,7 @@ function bindEvents() {
 function initEls() {
   [
     "importFileButton", "importUrlButton", "refreshButton", "settingsButton",
-    "zoomOutButton", "zoomValue", "zoomInButton",
+    "zoomOutButton", "zoomValue", "zoomInButton", "sidebarResizer",
     "sourceList", "allCount", "favoriteCount", "categoryList", "resultCount",
     "searchInput", "channelList", "detailPanel", "fileInput", "urlModal",
     "urlForm", "urlNameInput", "urlInput", "settingsModal", "settingsForm",

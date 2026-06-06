@@ -1,6 +1,7 @@
 :root {
   color-scheme: dark;
   --ui-zoom: 1;
+  --sidebar-width: 250px;
   --bg: #0a0d0d;
   --bg-soft: #101414;
   --panel: #141919;
@@ -180,7 +181,7 @@ svg {
 
 .workspace {
   display: grid;
-  grid-template-columns: 250px minmax(520px, 1fr) 320px;
+  grid-template-columns: var(--sidebar-width) 6px minmax(520px, 1fr) 320px;
   min-height: 0;
 }
 
@@ -195,6 +196,30 @@ svg {
 .sidebar {
   overflow: auto;
   padding: 10px 8px;
+}
+
+.sidebar-resizer {
+  position: relative;
+  z-index: 2;
+  cursor: col-resize;
+  background: rgba(18, 23, 23, 0.9);
+}
+
+.sidebar-resizer::before {
+  position: absolute;
+  inset: 0 2px;
+  background: var(--line);
+  content: "";
+}
+
+.sidebar-resizer:hover::before,
+.is-resizing-sidebar .sidebar-resizer::before {
+  background: var(--teal);
+}
+
+.is-resizing-sidebar {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .sidebar section + section {
@@ -671,7 +696,7 @@ svg {
   }
 
   .workspace {
-    grid-template-columns: 220px minmax(460px, 1fr) 280px;
+    grid-template-columns: minmax(180px, var(--sidebar-width)) 6px minmax(460px, 1fr) 280px;
   }
 
   .panel-head {
