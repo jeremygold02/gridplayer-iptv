@@ -541,7 +541,7 @@ function fillAboutDialog() {
   const meta = appMeta();
   els.aboutVersion.textContent = `${meta.name} ${meta.version}`;
   els.aboutRepoLink.href = meta.repoUrl;
-  els.aboutRepoLink.textContent = meta.repoUrl;
+  els.aboutRepoLink.textContent = "View source on GitHub";
   els.updateStatus.textContent = "";
   els.checkUpdatesButton.disabled = false;
   els.aboutInstallUpdateButton.hidden = true;
