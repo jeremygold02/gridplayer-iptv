@@ -78,6 +78,21 @@ jobs:
             --collect-submodules pythonnet `
             app.py
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            throw "Inno Setup compiler was not found at $iscc"
+          }
+          $version = "${{ steps.version.outputs.app_version }}"
+          & $iscc "/DMyAppVersion=`"$version`"" "installer\IPTVMultiPlayer.iss"
+
       - name: Generate release notes
         shell: pwsh
         run: |
@@ -97,7 +112,8 @@ jobs:
           ) + $commits + @(
             "",
             "## Download",
-            "- Download ``IPTV Multi Player.exe`` from the assets below."
+            "- ``IPTV Multi Player Setup.exe`` installs to ``%LocalAppData%\Programs\IPTV Multi Player`` and can add Start Menu and desktop shortcuts.",
+            "- ``IPTV Multi Player.exe`` is the portable version."
           )
           Set-Content -Path "release_notes.md" -Value $notes -Encoding UTF8
 
@@ -105,7 +121,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.version.outputs.version }}" "dist\IPTV Multi Player.exe" `
+          gh release create "${{ steps.version.outputs.version }}" `
+            "dist\IPTV Multi Player.exe" `
+            "installer\output\IPTV Multi Player Setup.exe" `
             --title "${{ steps.version.outputs.version }}" `
             --notes-file "release_notes.md" `
             --latest

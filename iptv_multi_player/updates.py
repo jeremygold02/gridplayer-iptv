@@ -54,13 +54,18 @@ def latest_release() -> dict[str, Any] | None:
 
 def release_asset(release: dict[str, Any]) -> dict[str, Any] | None:
     assets = release.get("assets") or []
+    expected_stem = comparable_exe_stem(RELEASE_ASSET_NAME)
     for asset in assets:
-        if str(asset.get("name") or "").lower() == RELEASE_ASSET_NAME.lower():
-            return asset
-    for asset in assets:
-        if str(asset.get("name") or "").lower().endswith(".exe"):
+        if comparable_exe_stem(str(asset.get("name") or "")) == expected_stem:
             return asset
     return None
+
+
+def comparable_exe_stem(name: str) -> str:
+    path = Path(name)
+    if path.suffix.lower() != ".exe":
+        return ""
+    return "".join(character for character in path.stem.lower() if character.isalnum())
 
 
 def check_for_update() -> dict[str, Any]:
@@ -115,6 +120,15 @@ def powershell_literal(value: Path | str) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
+def updater_environment() -> dict[str, str]:
+    env = os.environ.copy()
+    for key in list(env):
+        if key == "_MEIPASS2" or key.startswith("_PYI_"):
+            env.pop(key, None)
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return env
+
+
 def write_updater_script(script_path: Path, new_exe: Path, target_exe: Path, pid: int) -> None:
     log_path = script_path.with_suffix(".log")
     script_path.write_text(
@@ -166,6 +180,8 @@ def write_updater_script(script_path: Path, new_exe: Path, target_exe: Path, pid
             "    throw 'Could not replace the app after 60 attempts.'",
             "  }",
             "",
+            "  Get-ChildItem Env: | Where-Object { $_.Name -eq '_MEIPASS2' -or $_.Name -like '_PYI_*' } | Remove-Item",
+            "  $env:PYINSTALLER_RESET_ENVIRONMENT = '1'",
             "  Write-UpdateLog 'Starting updated app.'",
             "  Start-Process -FilePath $target -WorkingDirectory $appDir",
             "  Remove-Item -LiteralPath $newExe -Force -ErrorAction SilentlyContinue",
@@ -205,7 +221,8 @@ def install_update() -> dict[str, Any]:
     creationflags = 0
     startupinfo = None
     if sys.platform == "win32":
-        creationflags = subprocess.DETACHED_PROCESS | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        creationflags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         startupinfo.wShowWindow = subprocess.SW_HIDE
@@ -222,6 +239,7 @@ def install_update() -> dict[str, Any]:
         ],
         cwd=str(target_exe.parent),
         creationflags=creationflags,
+        env=updater_environment(),
         startupinfo=startupinfo,
         close_fds=True,
     )

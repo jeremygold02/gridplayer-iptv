@@ -15,3 +15,4 @@ playwright-report/
 test-results/
 .env
 iptv_multi_player/_version_build.py
+installer/output/
