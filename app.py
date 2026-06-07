@@ -5,9 +5,9 @@ import socket
 import threading
 import time
 
-from gridplayer_iptv import config
-from gridplayer_iptv.state import ensure_data_dirs
-from gridplayer_iptv.web import app
+from iptv_multi_player import config
+from iptv_multi_player.state import ensure_data_dirs
+from iptv_multi_player.web import app
 
 try:
     import webview
@@ -34,7 +34,7 @@ def serve_app(host: str, port: int) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="GridPlayer IPTV desktop client")
+    parser = argparse.ArgumentParser(description="IPTV Multi Player desktop client")
     parser.add_argument("--server", action="store_true", help="Run only the Flask server.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0)
@@ -47,7 +47,7 @@ def main() -> None:
 
     if args.server or webview is None:
         config.DESKTOP_MODE = False
-        print(f"GridPlayer IPTV running at {url}")
+        print(f"IPTV Multi Player running at {url}")
         serve_app(args.host, port)
         return
 
@@ -57,7 +57,7 @@ def main() -> None:
     time.sleep(0.45)
 
     webview.create_window(
-        "GridPlayer IPTV",
+        "IPTV Multi Player",
         url,
         width=1480,
         height=920,

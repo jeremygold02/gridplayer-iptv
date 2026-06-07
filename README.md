@@ -1,4 +1,4 @@
-# GridPlayer IPTV
+# IPTV Multi Player
 
 A local Flask + pywebview IPTV control app for managing live M3U channels and launching individual streams in GridPlayer, MPV, or VLC.
 
@@ -31,7 +31,7 @@ Put your API-Sports key in Settings under `API-Sports key`, or create a gitignor
 API_SPORTS_KEY=your_api_key_here
 ```
 
-For the built exe, place `.env` beside `GridPlayer IPTV.exe`. The `.env` file is ignored by git and should not be committed.
+For the built exe, place `.env` beside `IPTV Multi Player.exe`. The `.env` file is ignored by git and should not be committed.
 
 ## Build
 
@@ -39,4 +39,4 @@ For the built exe, place `.env` beside `GridPlayer IPTV.exe`. The `.env` file is
 build_exe.bat
 ```
 
-The build script creates a temporary virtual environment, installs requirements and PyInstaller, builds `GridPlayer IPTV.exe` into the project root, then removes `.build_venv`, `build`, `dist`, and the generated spec file.
+The build script creates a temporary virtual environment, installs requirements and PyInstaller, builds `IPTV Multi Player.exe` into the project root, then removes `.build_venv`, `build`, `dist`, and the generated spec file.

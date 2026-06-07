@@ -278,7 +278,7 @@ def api_export_queue():
             lines.append(f'#EXTINF:-1 tvg-name="{channel["name"]}" group-title="{channel["group"]}",{channel["name"]}')
             lines.append(channel["url"])
         QUEUE_EXPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return send_file(QUEUE_EXPORT_PATH, as_attachment=True, download_name="gridplayer-queue.m3u")
+    return send_file(QUEUE_EXPORT_PATH, as_attachment=True, download_name="iptv-multi-player-queue.m3u")
 
 
 @app.post("/api/settings")

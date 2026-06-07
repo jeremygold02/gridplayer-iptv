@@ -1,1 +1,1 @@
-"""GridPlayer IPTV application package."""
+"""IPTV Multi Player application package."""

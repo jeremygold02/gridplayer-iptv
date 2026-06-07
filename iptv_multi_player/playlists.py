@@ -74,7 +74,7 @@ def fetch_playlist_url(url: str) -> str:
     req = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "GridPlayer-IPTV/1.0",
+            "User-Agent": "IPTV-Multi-Player/1.0",
             "Accept": "application/x-mpegURL, audio/x-mpegurl, text/plain, */*",
         },
     )

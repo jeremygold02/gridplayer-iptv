@@ -22,7 +22,7 @@ ASSET_DIR = get_asset_dir()
 DATA_DIR = APP_DIR / "data"
 SOURCE_DIR = DATA_DIR / "sources"
 LIBRARY_PATH = DATA_DIR / "library.json"
-QUEUE_EXPORT_PATH = DATA_DIR / "gridplayer-queue.m3u"
+QUEUE_EXPORT_PATH = DATA_DIR / "iptv-multi-player-queue.m3u"
 SPORTS_CACHE_PATH = DATA_DIR / "sports_cache.json"
 ENV_PATH = APP_DIR / ".env"
 

@@ -1,6 +1,6 @@
 const els = {};
 const ZOOM_LEVELS = [75, 90, 100, 110, 125, 150];
-const BROWSER_PREF_KEY = "gridplayer-iptv-ui";
+const BROWSER_PREF_KEY = "iptv-multi-player-ui";
 const SIDEBAR_MIN_WIDTH = 180;
 const SIDEBAR_MAX_WIDTH = 420;
 const ROW_DOUBLE_CLICK_MS = 450;

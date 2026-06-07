@@ -95,7 +95,7 @@ def fetch_sports_events(sport: str, date_value: str, key: str) -> list[dict[str,
     req = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "GridPlayer-IPTV/1.0",
+            "User-Agent": "IPTV-Multi-Player/1.0",
             "Accept": "application/json",
             "x-apisports-key": key,
         },
