@@ -3,6 +3,19 @@ const ZOOM_LEVELS = [75, 90, 100, 110, 125, 150];
 const BROWSER_PREF_KEY = "gridplayer-iptv-ui";
 const SIDEBAR_MIN_WIDTH = 180;
 const SIDEBAR_MAX_WIDTH = 420;
+const PLAYER_PATH_FIELDS = {
+  gridplayer: "gridplayer_path",
+  mpv: "mpv_path",
+  vlc: "vlc_path",
+};
+const GAME_SORT_RANK = {
+  live: 0,
+  scheduled: 1,
+  inactive: 2,
+  final: 3,
+  unknown: 4,
+  stream: 5,
+};
 let appState = null;
 let selectedChannelId = null;
 let filters = {
@@ -39,6 +52,25 @@ function initials(name) {
 function sourceName(sourceId) {
   const source = appState?.sources.find((item) => item.id === sourceId);
   return source?.name || "Unknown source";
+}
+
+function playerById(playerId) {
+  return appState?.players?.items?.find((player) => player.id === playerId) || null;
+}
+
+function selectedPlayerId() {
+  const selected = appState?.players?.selected || appState?.settings?.selected_player || "gridplayer";
+  return PLAYER_PATH_FIELDS[selected] ? selected : "gridplayer";
+}
+
+function selectedPlayerLabel() {
+  return playerById(selectedPlayerId())?.label || "GridPlayer";
+}
+
+function playerPathValue(playerId) {
+  const pathField = PLAYER_PATH_FIELDS[playerId];
+  if (!pathField) return "";
+  return appState?.settings?.[pathField] || playerById(playerId)?.path || "";
 }
 
 function channelById(channelId) {
@@ -227,12 +259,17 @@ function filteredChannels() {
 
   const factor = sortState.direction === "asc" ? 1 : -1;
   return [...channels].sort((a, b) => {
-    const left = sortState.key === "group" ? a.group : a.name;
-    const right = sortState.key === "group" ? b.group : b.name;
-    const result = String(left || "").localeCompare(String(right || ""), undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
+    let result = 0;
+    if (sortState.key === "game") {
+      result = compareGameStatus(a, b);
+    } else {
+      const left = sortState.key === "group" ? a.group : a.name;
+      const right = sortState.key === "group" ? b.group : b.name;
+      result = String(left || "").localeCompare(String(right || ""), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    }
     return result * factor || a.order - b.order || a.name.localeCompare(b.name);
   });
 }
@@ -253,6 +290,24 @@ function gameInfo(channel) {
     status_long: "No game lookup",
     matched: false,
   };
+}
+
+function compareGameStatus(leftChannel, rightChannel) {
+  const left = gameInfo(leftChannel);
+  const right = gameInfo(rightChannel);
+  const leftRank = GAME_SORT_RANK[left.kind] ?? GAME_SORT_RANK.unknown;
+  const rightRank = GAME_SORT_RANK[right.kind] ?? GAME_SORT_RANK.unknown;
+  if (leftRank !== rightRank) return leftRank - rightRank;
+
+  const leftStart = Number(left.start_timestamp) || 0;
+  const rightStart = Number(right.start_timestamp) || 0;
+  if (leftStart && rightStart && leftStart !== rightStart) return leftStart - rightStart;
+  if (leftStart !== rightStart) return leftStart ? -1 : 1;
+
+  return String(left.text || "").localeCompare(String(right.text || ""), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
 }
 
 function gameStatusHtml(channel) {
@@ -297,6 +352,7 @@ function render() {
   if (!appState) return;
   syncSelectedChannel();
   renderStatus();
+  renderPlayerSelect();
   renderSortHeaders();
   renderSources();
   renderCategories();
@@ -325,6 +381,11 @@ function renderStatus() {
   const total = appState.channels.length;
   els.allCount.textContent = total;
   els.favoriteCount.textContent = appState.favorites.length;
+}
+
+function renderPlayerSelect() {
+  if (!els.playerSelect) return;
+  els.playerSelect.value = selectedPlayerId();
 }
 
 function renderSources() {
@@ -366,6 +427,7 @@ function renderChannels() {
   if (!appState) return;
   const channels = filteredChannels();
   const favorites = new Set(appState.favorites);
+  const playerLabel = selectedPlayerLabel();
   els.resultCount.textContent = `${channels.length} visible`;
   if (channels.length === 0) {
     els.channelList.innerHTML = `<div class="empty-state">No matching channels</div>`;
@@ -385,7 +447,7 @@ function renderChannels() {
       ${gameStatusHtml(channel)}
       <div class="row-actions">
         <button class="icon-button ${favorites.has(channel.id) ? "active" : ""}" data-action="favorite" title="Favorite" type="button">☆</button>
-        <button class="icon-button" data-action="open" title="Open in GridPlayer" type="button">
+        <button class="icon-button" data-action="open" title="Open in ${escapeHtml(playerLabel)}" type="button">
           <svg viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M9 7h8v8"/><path d="M5 5h6M5 5v14h14v-6"/></svg>
         </button>
       </div>
@@ -400,6 +462,7 @@ function renderDetail() {
     return;
   }
   const game = gameInfo(channel);
+  const playerLabel = selectedPlayerLabel();
 
   els.detailPanel.innerHTML = `
     <div class="detail-content">
@@ -419,7 +482,7 @@ function renderDetail() {
       <div class="detail-actions" data-channel-id="${channel.id}">
         <button class="primary-button" data-detail-action="open" type="button">
           <svg viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M9 7h8v8"/><path d="M5 5h6M5 5v14h14v-6"/></svg>
-          <span>Open in GridPlayer</span>
+          <span>Open in ${escapeHtml(playerLabel)}</span>
         </button>
       </div>
     </div>
@@ -433,11 +496,17 @@ async function refreshWithState(request) {
 }
 
 async function openChannel(channelId) {
-  await api("/api/open", {
+  const data = await api("/api/open", {
     method: "POST",
-    body: JSON.stringify({ channel_id: channelId }),
+    body: JSON.stringify({ channel_id: channelId, player: selectedPlayerId() }),
   });
-  showToast("Opened in GridPlayer");
+  showToast(`Opened in ${data.label || selectedPlayerLabel()}`);
+}
+
+function fillSettingsForm() {
+  els.gridplayerPathInput.value = playerPathValue("gridplayer");
+  els.mpvPathInput.value = playerPathValue("mpv");
+  els.vlcPathInput.value = playerPathValue("vlc");
 }
 
 function openModal(modal) {
@@ -455,7 +524,7 @@ function bindEvents() {
   els.importFileButton.addEventListener("click", () => els.fileInput.click());
   els.importUrlButton.addEventListener("click", () => openModal(els.urlModal));
   els.settingsButton.addEventListener("click", () => {
-    els.gridplayerPathInput.value = appState?.settings.gridplayer_path || appState?.gridplayer.path || "";
+    fillSettingsForm();
     openModal(els.settingsModal);
   });
 
@@ -503,6 +572,8 @@ function bindEvents() {
         method: "POST",
         body: JSON.stringify({
           gridplayer_path: els.gridplayerPathInput.value,
+          mpv_path: els.mpvPathInput.value,
+          vlc_path: els.vlcPathInput.value,
         }),
       }));
       closeModals();
@@ -520,6 +591,19 @@ function bindEvents() {
       const failed = data.errors?.length || 0;
       showToast(failed ? `Refresh finished with ${failed} issue${failed === 1 ? "" : "s"}` : "Playlists refreshed");
     } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+
+  els.playerSelect.addEventListener("change", async () => {
+    try {
+      await refreshWithState(api("/api/settings", {
+        method: "POST",
+        body: JSON.stringify({ selected_player: els.playerSelect.value }),
+      }));
+      showToast(`Player set to ${selectedPlayerLabel()}`);
+    } catch (error) {
+      renderPlayerSelect();
       showToast(error.message, "error");
     }
   });
@@ -630,11 +714,11 @@ function bindEvents() {
 function initEls() {
   [
     "importFileButton", "importUrlButton", "refreshButton", "settingsButton",
-    "zoomOutButton", "zoomValue", "zoomInButton", "sidebarResizer",
+    "playerSelect", "zoomOutButton", "zoomValue", "zoomInButton", "sidebarResizer",
     "sourceList", "allCount", "favoriteCount", "categoryList", "resultCount",
     "searchInput", "channelList", "detailPanel", "fileInput", "urlModal",
     "urlForm", "urlNameInput", "urlInput", "settingsModal", "settingsForm",
-    "gridplayerPathInput", "toast",
+    "gridplayerPathInput", "mpvPathInput", "vlcPathInput", "toast",
   ].forEach((id) => {
     els[id] = $(id);
   });

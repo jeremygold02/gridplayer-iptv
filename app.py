@@ -57,9 +57,52 @@ ENV_PATH = APP_DIR / ".env"
 
 MAX_QUEUE_ITEMS = 16
 HTTP_TIMEOUT_SECONDS = 18
-SPORTS_REFRESH_SECONDS = 30 * 60
+SPORTS_REFRESH_SECONDS = 15 * 60
 SPORTS_DAILY_CALL_LIMIT = 100
 DESKTOP_MODE = False
+DEFAULT_PLAYER = "gridplayer"
+
+PLAYER_ORDER = ("gridplayer", "mpv", "vlc")
+PLAYER_CONFIG = {
+    "gridplayer": {
+        "label": "GridPlayer",
+        "path_key": "gridplayer_path",
+        "env": "GRIDPLAYER_PATH",
+        "commands": ("GridPlayer", "gridplayer", "GridPlayer.exe", "gridplayer.exe"),
+        "paths": (
+            r"C:\Program Files\GridPlayer\GridPlayer.exe",
+            r"C:\Program Files (x86)\GridPlayer\GridPlayer.exe",
+            r"C:\Program Files\gridplayer\GridPlayer.exe",
+            r"C:\Program Files (x86)\gridplayer\GridPlayer.exe",
+            str(Path.home() / "AppData" / "Local" / "Programs" / "GridPlayer" / "GridPlayer.exe"),
+            str(Path.home() / "AppData" / "Local" / "Programs" / "gridplayer" / "GridPlayer.exe"),
+        ),
+    },
+    "mpv": {
+        "label": "MPV",
+        "path_key": "mpv_path",
+        "env": "MPV_PATH",
+        "commands": ("mpv", "mpv.exe"),
+        "paths": (
+            r"C:\Program Files\mpv\mpv.exe",
+            r"C:\Program Files (x86)\mpv\mpv.exe",
+            str(Path.home() / "scoop" / "apps" / "mpv" / "current" / "mpv.exe"),
+            r"C:\ProgramData\scoop\apps\mpv\current\mpv.exe",
+            str(Path.home() / "AppData" / "Local" / "Programs" / "mpv" / "mpv.exe"),
+        ),
+    },
+    "vlc": {
+        "label": "VLC",
+        "path_key": "vlc_path",
+        "env": "VLC_PATH",
+        "commands": ("vlc", "vlc.exe"),
+        "paths": (
+            r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe",
+            r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+            str(Path.home() / "AppData" / "Local" / "Programs" / "VideoLAN" / "VLC" / "vlc.exe"),
+        ),
+    },
+}
 
 ATTR_RE = re.compile(r'([A-Za-z0-9_-]+)="([^"]*)"')
 MATCHUP_RE = re.compile(r"^(.+?)\s+(?:vs\.?|v|@)\s+(.+)$", re.IGNORECASE)
@@ -117,7 +160,10 @@ def default_state() -> dict[str, Any]:
         "selected_source_id": "all",
         "settings": {
             "grid_size": "3x3",
+            "selected_player": DEFAULT_PLAYER,
             "gridplayer_path": "",
+            "mpv_path": "",
+            "vlc_path": "",
             "auto_open_queue": False,
             "ui_zoom": 100,
             "ui_sidebar_width": 250,
@@ -477,8 +523,13 @@ def game_metadata(event: dict[str, Any], sport: str, confidence: float) -> dict[
     elapsed = status.get("elapsed")
     timer = status.get("timer")
     score = event_score(event, sport)
-    start_time = local_time_text(event_timestamp(event, sport))
+    raw_timestamp = event_timestamp(event, sport)
+    start_time = local_time_text(raw_timestamp)
     home, away = event_team_names(event)
+    try:
+        start_timestamp = int(raw_timestamp or 0)
+    except (TypeError, ValueError):
+        start_timestamp = 0
 
     if code in config["live_codes"]:
         if sport == "mma":
@@ -510,6 +561,7 @@ def game_metadata(event: dict[str, Any], sport: str, confidence: float) -> dict[
         "status_short": code,
         "status_long": status_long,
         "score": score,
+        "start_timestamp": start_timestamp,
         "home": home,
         "away": away,
         "event_id": event_id(event, sport),
@@ -529,6 +581,7 @@ def unmatched_game_metadata(channel: dict[str, Any], reason: str) -> dict[str, A
         "status_short": "",
         "status_long": reason,
         "score": "",
+        "start_timestamp": 0,
         "home": "",
         "away": "",
         "event_id": None,
@@ -547,6 +600,7 @@ def stream_game_metadata() -> dict[str, Any]:
         "status_short": "",
         "status_long": "No game lookup",
         "score": "",
+        "start_timestamp": 0,
         "home": "",
         "away": "",
         "event_id": None,
@@ -819,29 +873,33 @@ def upsert_url_source(name: str, url: str, content: str) -> dict[str, Any]:
     return source
 
 
-def common_gridplayer_paths() -> list[Path]:
-    candidates = [
-        os.environ.get("GRIDPLAYER_PATH", ""),
-        r"C:\Program Files\GridPlayer\GridPlayer.exe",
-        r"C:\Program Files (x86)\GridPlayer\GridPlayer.exe",
-        r"C:\Program Files\gridplayer\GridPlayer.exe",
-        r"C:\Program Files (x86)\gridplayer\GridPlayer.exe",
-        str(Path.home() / "AppData" / "Local" / "Programs" / "GridPlayer" / "GridPlayer.exe"),
-        str(Path.home() / "AppData" / "Local" / "Programs" / "gridplayer" / "GridPlayer.exe"),
-    ]
+def normalize_player_id(player_id: Any) -> str:
+    player = str(player_id or "").strip().lower()
+    return player if player in PLAYER_CONFIG else DEFAULT_PLAYER
+
+
+def player_label(player_id: str) -> str:
+    return PLAYER_CONFIG[normalize_player_id(player_id)]["label"]
+
+
+def common_player_paths(player_id: str) -> list[Path]:
+    config = PLAYER_CONFIG[normalize_player_id(player_id)]
+    candidates = [os.environ.get(config["env"], ""), *config["paths"]]
     return [Path(path) for path in candidates if path]
 
 
-def find_gridplayer(settings: dict[str, Any]) -> Path | None:
-    configured = settings.get("gridplayer_path", "").strip()
+def find_player(player_id: str, settings: dict[str, Any]) -> Path | None:
+    player = normalize_player_id(player_id)
+    config = PLAYER_CONFIG[player]
+    configured = str(settings.get(config["path_key"], "") or "").strip()
     if configured and Path(configured).is_file():
         return Path(configured)
 
-    for candidate in common_gridplayer_paths():
+    for candidate in common_player_paths(player):
         if candidate.is_file():
             return candidate
 
-    for command in ("GridPlayer", "gridplayer", "GridPlayer.exe", "gridplayer.exe"):
+    for command in config["commands"]:
         found = shutil.which(command)
         if found:
             return Path(found)
@@ -849,10 +907,32 @@ def find_gridplayer(settings: dict[str, Any]) -> Path | None:
     return None
 
 
-def launch_gridplayer(urls: list[str], settings: dict[str, Any]) -> Path:
-    executable = find_gridplayer(settings)
+def find_gridplayer(settings: dict[str, Any]) -> Path | None:
+    return find_player("gridplayer", settings)
+
+
+def public_players(settings: dict[str, Any]) -> dict[str, Any]:
+    selected = normalize_player_id(settings.get("selected_player"))
+    items = []
+    for player_id in PLAYER_ORDER:
+        config = PLAYER_CONFIG[player_id]
+        path = find_player(player_id, settings)
+        items.append({
+            "id": player_id,
+            "label": config["label"],
+            "available": path is not None,
+            "path": str(path) if path else "",
+            "configured_path": str(settings.get(config["path_key"], "") or ""),
+            "path_key": config["path_key"],
+        })
+    return {"selected": selected, "items": items}
+
+
+def launch_player(urls: list[str], settings: dict[str, Any], player_id: Any = None) -> tuple[str, Path]:
+    player = normalize_player_id(player_id or settings.get("selected_player"))
+    executable = find_player(player, settings)
     if executable is None:
-        raise FileNotFoundError("GridPlayer.exe was not found. Set the path in Settings.")
+        raise FileNotFoundError(f"{player_label(player)} was not found. Set the path in Settings.")
     if not urls:
         raise ValueError("No stream URLs to open.")
 
@@ -868,13 +948,18 @@ def launch_gridplayer(urls: list[str], settings: dict[str, Any]) -> Path:
         close_fds=True,
         creationflags=creationflags,
     )
-    return executable
+    return player, executable
+
+
+def launch_gridplayer(urls: list[str], settings: dict[str, Any]) -> Path:
+    return launch_player(urls, settings, "gridplayer")[1]
 
 
 def public_state() -> dict[str, Any]:
     state = read_state()
     settings = state.get("settings", {})
-    gridplayer_path = find_gridplayer(settings)
+    players = public_players(settings)
+    gridplayer = next((player for player in players["items"] if player["id"] == "gridplayer"), None)
     categories = sorted({channel.get("group") or "Ungrouped" for channel in state["channels"].values()})
     channels, sports_meta = enrich_channels_with_games(list(state["channels"].values()))
     return {
@@ -886,9 +971,10 @@ def public_state() -> dict[str, Any]:
         "sports": sports_meta,
         "selected_source_id": state.get("selected_source_id", "all"),
         "settings": settings,
+        "players": players,
         "gridplayer": {
-            "available": gridplayer_path is not None,
-            "path": str(gridplayer_path) if gridplayer_path else "",
+            "available": bool(gridplayer and gridplayer["available"]),
+            "path": gridplayer["path"] if gridplayer else "",
         },
         "runtime": {
             "desktop": DESKTOP_MODE,
@@ -1081,10 +1167,10 @@ def api_open_channel():
         if channel is None:
             return json_error("Channel not found.", 404)
         try:
-            executable = launch_gridplayer([channel["url"]], state["settings"])
+            player, executable = launch_player([channel["url"]], state["settings"], payload.get("player"))
         except Exception as exc:  # noqa: BLE001
             return json_error(str(exc))
-        return jsonify({"success": True, "data": {"path": str(executable)}})
+        return jsonify({"success": True, "data": {"path": str(executable), "player": player, "label": player_label(player)}})
 
 
 @app.post("/api/open-queue")
@@ -1097,10 +1183,10 @@ def api_open_queue():
             if channel_id in state["channels"]
         ]
         try:
-            executable = launch_gridplayer(urls, state["settings"])
+            player, executable = launch_player(urls, state["settings"])
         except Exception as exc:  # noqa: BLE001
             return json_error(str(exc))
-        return jsonify({"success": True, "data": {"path": str(executable), "count": len(urls)}})
+        return jsonify({"success": True, "data": {"path": str(executable), "player": player, "label": player_label(player), "count": len(urls)}})
 
 
 @app.get("/api/export-queue")
@@ -1121,13 +1207,27 @@ def api_export_queue():
 @app.post("/api/settings")
 def api_settings():
     payload = request.get_json(silent=True) or {}
-    allowed = {"grid_size", "gridplayer_path", "auto_open_queue", "ui_zoom", "ui_sidebar_width"}
+    allowed = {
+        "grid_size",
+        "selected_player",
+        "gridplayer_path",
+        "mpv_path",
+        "vlc_path",
+        "auto_open_queue",
+        "ui_zoom",
+        "ui_sidebar_width",
+    }
     with state_lock:
         state = read_state()
         settings = state.setdefault("settings", default_state()["settings"])
         for key in allowed:
             if key in payload:
-                settings[key] = payload[key]
+                if key == "selected_player":
+                    settings[key] = normalize_player_id(payload[key])
+                elif key.endswith("_path"):
+                    settings[key] = str(payload[key] or "").strip()
+                else:
+                    settings[key] = payload[key]
         write_state(state)
         return jsonify({"success": True, "data": {"state": public_state()}})
 

@@ -30,6 +30,14 @@
             <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v6h-6"/></svg>
             <span>Refresh</span>
           </button>
+          <label class="player-picker">
+            <span>Open With</span>
+            <select id="playerSelect" aria-label="Open streams with">
+              <option value="gridplayer">GridPlayer</option>
+              <option value="mpv">MPV</option>
+              <option value="vlc">VLC</option>
+            </select>
+          </label>
           <div class="zoom-control" aria-label="Zoom controls">
             <button class="icon-button" id="zoomOutButton" type="button" title="Zoom out">-</button>
             <span id="zoomValue">100%</span>
@@ -83,7 +91,7 @@
             <div class="table-header">
               <button class="sort-header" data-sort-key="channel" type="button">Channel</button>
               <button class="sort-header" data-sort-key="group" type="button">Group</button>
-              <span>Game</span>
+              <button class="sort-header" data-sort-key="game" type="button">Game</button>
               <span>Actions</span>
             </div>
             <div id="channelList" class="channel-list"></div>
@@ -131,6 +139,14 @@
         <label>
           <span>GridPlayer executable</span>
           <input id="gridplayerPathInput" type="text" placeholder="C:\Program Files (x86)\GridPlayer\GridPlayer.exe">
+        </label>
+        <label>
+          <span>MPV executable</span>
+          <input id="mpvPathInput" type="text" placeholder="C:\Program Files\mpv\mpv.exe">
+        </label>
+        <label>
+          <span>VLC executable</span>
+          <input id="vlcPathInput" type="text" placeholder="C:\Program Files (x86)\VideoLAN\VLC\vlc.exe">
         </label>
         <div class="modal-actions">
           <button class="secondary-button" data-close-modal type="button">Cancel</button>

@@ -37,6 +37,7 @@ body {
 
 button,
 input,
+select,
 a {
   font: inherit;
 }
@@ -150,6 +151,36 @@ svg {
   font-size: 12px;
   font-weight: 700;
   text-align: center;
+}
+
+.player-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111616;
+}
+
+.player-picker span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.player-picker select {
+  min-width: 110px;
+  height: 30px;
+  border: 1px solid var(--line-soft);
+  outline: 0;
+  background: #0e1313;
+  color: var(--text);
+}
+
+.player-picker:focus-within {
+  border-color: rgba(16, 183, 164, 0.55);
 }
 
 .tool-button,
@@ -780,6 +811,16 @@ svg {
 
   .toolbar span {
     display: none;
+  }
+
+  .player-picker {
+    width: 118px;
+    padding: 0 6px;
+  }
+
+  .player-picker select {
+    min-width: 0;
+    width: 100%;
   }
 
   .tool-button {
