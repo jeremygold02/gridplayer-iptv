@@ -539,7 +539,7 @@ function fillSettingsForm() {
 
 function fillAboutDialog() {
   const meta = appMeta();
-  els.aboutVersion.textContent = `${meta.name} v${meta.version}`;
+  els.aboutVersion.textContent = `${meta.name} ${meta.version}`;
   els.aboutRepoLink.href = meta.repoUrl;
   els.aboutRepoLink.textContent = meta.repoUrl;
   els.updateStatus.textContent = "";

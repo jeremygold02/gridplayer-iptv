@@ -27,7 +27,7 @@ APP_VERSION = clean_version(BUILD_VERSION)
 
 
 def display_version(value: str | None = None) -> str:
-    return f"v{clean_version(value or APP_VERSION)}"
+    return clean_version(value or APP_VERSION)
 
 
 def version_parts(value: str) -> tuple[int, int, int]:

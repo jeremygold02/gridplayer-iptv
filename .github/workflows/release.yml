@@ -28,20 +28,29 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $tags = @(git tag --list "v0.1.*" --sort=-v:refname)
+          $tags = @(
+            git tag --list "0.1.*" | ForEach-Object {
+              $tag = [string]$_
+              if ($tag -match '^0\.1\.(\d+)$') {
+                [pscustomobject]@{
+                  Name = $tag
+                  Patch = [int]$Matches[1]
+                }
+              }
+            } | Sort-Object -Property Patch -Descending
+          )
           if ($tags.Count -eq 0) {
-            $next = "v0.1.0"
+            $next = "0.1.0"
+            $previousTag = ""
           } else {
-            $latest = [string]$tags[0]
-            if ($latest -notmatch '^v0\.1\.(\d+)$') {
-              throw "Latest matching tag '$latest' is not a v0.1.x patch tag."
-            }
-            $patch = [int]$Matches[1] + 1
-            $next = "v0.1.$patch"
+            $latest = $tags[0]
+            $patch = $latest.Patch + 1
+            $next = "0.1.$patch"
+            $previousTag = $latest.Name
           }
-          $appVersion = $next.TrimStart("v")
           "version=$next" >> $env:GITHUB_OUTPUT
-          "app_version=$appVersion" >> $env:GITHUB_OUTPUT
+          "app_version=$next" >> $env:GITHUB_OUTPUT
+          "previous_tag=$previousTag" >> $env:GITHUB_OUTPUT
 
       - name: Bake release version
         shell: pwsh
@@ -69,11 +78,34 @@ jobs:
             --collect-submodules pythonnet `
             app.py
 
+      - name: Generate release notes
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $previousTag = "${{ steps.version.outputs.previous_tag }}"
+          if ([string]::IsNullOrWhiteSpace($previousTag)) {
+            $commits = @(git log --pretty=format:"- %s (%h)" --max-count=50)
+          } else {
+            $commits = @(git log --pretty=format:"- %s (%h)" "$previousTag..HEAD")
+          }
+          if ($commits.Count -eq 0) {
+            $commits = @("- No code changes since the previous release.")
+          }
+          $notes = @(
+            "## Changes",
+            ""
+          ) + $commits + @(
+            "",
+            "## Download",
+            "- Download ``IPTV Multi Player.exe`` from the assets below."
+          )
+          Set-Content -Path "release_notes.md" -Value $notes -Encoding UTF8
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.version.outputs.version }}" "dist\IPTV Multi Player.exe" `
-            --title "IPTV Multi Player ${{ steps.version.outputs.version }}" `
-            --notes "Automated Windows build for IPTV Multi Player ${{ steps.version.outputs.version }}." `
+            --title "${{ steps.version.outputs.version }}" `
+            --notes-file "release_notes.md" `
             --latest

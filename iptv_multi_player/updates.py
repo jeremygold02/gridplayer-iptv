@@ -78,7 +78,7 @@ def check_for_update() -> dict[str, Any]:
             "message": "No published releases were found.",
         }
 
-    latest_version = str(release.get("tag_name") or "").strip()
+    latest_version = display_version(str(release.get("tag_name") or "").strip())
     release_url = str(release.get("html_url") or GITHUB_REPO_URL).strip()
     asset = release_asset(release)
     asset_url = str(asset.get("browser_download_url") or "") if asset else ""
