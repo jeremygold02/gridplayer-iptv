@@ -34,6 +34,7 @@ let uiPrefs = {
 };
 let sidebarResize = null;
 let sportsRefreshTimer = null;
+let apiKeyVisible = false;
 
 function $(id) {
   return document.getElementById(id);
@@ -507,6 +508,16 @@ function fillSettingsForm() {
   els.gridplayerPathInput.value = playerPathValue("gridplayer");
   els.mpvPathInput.value = playerPathValue("mpv");
   els.vlcPathInput.value = playerPathValue("vlc");
+  els.apiSportsKeyInput.value = appState?.api_sports?.key || "";
+  setApiKeyVisibility(false);
+}
+
+function setApiKeyVisibility(visible) {
+  apiKeyVisible = Boolean(visible);
+  els.apiSportsKeyInput.type = apiKeyVisible ? "text" : "password";
+  els.toggleApiKeyButton.title = apiKeyVisible ? "Hide API key" : "Show API key";
+  els.toggleApiKeyButton.setAttribute("aria-label", apiKeyVisible ? "Hide API key" : "Show API key");
+  els.toggleApiKeyButton.setAttribute("aria-pressed", String(apiKeyVisible));
 }
 
 function openModal(modal) {
@@ -574,6 +585,7 @@ function bindEvents() {
           gridplayer_path: els.gridplayerPathInput.value,
           mpv_path: els.mpvPathInput.value,
           vlc_path: els.vlcPathInput.value,
+          api_sports_key: els.apiSportsKeyInput.value,
         }),
       }));
       closeModals();
@@ -593,6 +605,10 @@ function bindEvents() {
     } catch (error) {
       showToast(error.message, "error");
     }
+  });
+
+  els.toggleApiKeyButton.addEventListener("click", () => {
+    setApiKeyVisibility(!apiKeyVisible);
   });
 
   els.playerSelect.addEventListener("change", async () => {
@@ -718,7 +734,8 @@ function initEls() {
     "sourceList", "allCount", "favoriteCount", "categoryList", "resultCount",
     "searchInput", "channelList", "detailPanel", "fileInput", "urlModal",
     "urlForm", "urlNameInput", "urlInput", "settingsModal", "settingsForm",
-    "gridplayerPathInput", "mpvPathInput", "vlcPathInput", "toast",
+    "gridplayerPathInput", "mpvPathInput", "vlcPathInput", "apiSportsKeyInput",
+    "toggleApiKeyButton", "toast",
   ].forEach((id) => {
     els[id] = $(id);
   });

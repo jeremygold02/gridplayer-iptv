@@ -718,7 +718,8 @@ svg {
   margin-bottom: 16px;
 }
 
-.modal label {
+.modal label,
+.modal-field {
   display: grid;
   gap: 7px;
   margin: 13px 0;
@@ -728,11 +729,27 @@ svg {
 }
 
 .modal input[type="text"],
-.modal input[type="url"] {
+.modal input[type="url"],
+.modal input[type="password"] {
   height: 42px;
   padding: 0 12px;
   border: 1px solid var(--line);
   background: #0e1313;
+}
+
+.secret-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 8px;
+}
+
+.secret-input-row input {
+  min-width: 0;
+}
+
+.secret-input-row .icon-button {
+  width: 42px;
+  height: 42px;
 }
 
 .toggle-row {

@@ -61,6 +61,7 @@ SPORTS_REFRESH_SECONDS = 15 * 60
 SPORTS_DAILY_CALL_LIMIT = 100
 DESKTOP_MODE = False
 DEFAULT_PLAYER = "gridplayer"
+API_SPORTS_KEY_NAME = "API_SPORTS_KEY"
 
 PLAYER_ORDER = ("gridplayer", "mpv", "vlc")
 PLAYER_CONFIG = {
@@ -267,8 +268,45 @@ def read_env_file() -> dict[str, str]:
     return values
 
 
+def quote_env_value(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def write_env_value(key: str, value: str) -> None:
+    value = value.strip()
+    lines: list[str] = []
+    if ENV_PATH.exists():
+        try:
+            lines = ENV_PATH.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            lines = []
+
+    found = False
+    next_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            next_lines.append(line)
+            continue
+
+        current_key = stripped.split("=", 1)[0].strip()
+        if current_key != key:
+            next_lines.append(line)
+            continue
+
+        found = True
+        if value:
+            next_lines.append(f"{key}={quote_env_value(value)}")
+
+    if not found and value:
+        next_lines.append(f"{key}={quote_env_value(value)}")
+
+    if next_lines or ENV_PATH.exists():
+        ENV_PATH.write_text(("\n".join(next_lines).rstrip() + "\n") if next_lines else "", encoding="utf-8")
+
+
 def api_sports_key() -> str:
-    return os.environ.get("API_SPORTS_KEY", "").strip() or read_env_file().get("API_SPORTS_KEY", "").strip()
+    return os.environ.get(API_SPORTS_KEY_NAME, "").strip() or read_env_file().get(API_SPORTS_KEY_NAME, "").strip()
 
 
 def make_id(prefix: str, *parts: str) -> str:
@@ -958,6 +996,7 @@ def launch_gridplayer(urls: list[str], settings: dict[str, Any]) -> Path:
 def public_state() -> dict[str, Any]:
     state = read_state()
     settings = state.get("settings", {})
+    sports_key = api_sports_key()
     players = public_players(settings)
     gridplayer = next((player for player in players["items"] if player["id"] == "gridplayer"), None)
     categories = sorted({channel.get("group") or "Ungrouped" for channel in state["channels"].values()})
@@ -972,6 +1011,10 @@ def public_state() -> dict[str, Any]:
         "selected_source_id": state.get("selected_source_id", "all"),
         "settings": settings,
         "players": players,
+        "api_sports": {
+            "key": sports_key,
+            "configured": bool(sports_key),
+        },
         "gridplayer": {
             "available": bool(gridplayer and gridplayer["available"]),
             "path": gridplayer["path"] if gridplayer else "",
@@ -1220,6 +1263,8 @@ def api_settings():
     with state_lock:
         state = read_state()
         settings = state.setdefault("settings", default_state()["settings"])
+        if "api_sports_key" in payload:
+            write_env_value(API_SPORTS_KEY_NAME, str(payload.get("api_sports_key") or ""))
         for key in allowed:
             if key in payload:
                 if key == "selected_player":

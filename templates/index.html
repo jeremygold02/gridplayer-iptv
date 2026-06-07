@@ -148,6 +148,15 @@
           <span>VLC executable</span>
           <input id="vlcPathInput" type="text" placeholder="C:\Program Files (x86)\VideoLAN\VLC\vlc.exe">
         </label>
+        <div class="modal-field">
+          <span>API-Sports key</span>
+          <div class="secret-input-row">
+            <input id="apiSportsKeyInput" type="password" placeholder="API_SPORTS_KEY" autocomplete="off" spellcheck="false" aria-label="API-Sports key">
+            <button class="icon-button" id="toggleApiKeyButton" type="button" title="Show API key" aria-label="Show API key" aria-pressed="false">
+              <svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
         <div class="modal-actions">
           <button class="secondary-button" data-close-modal type="button">Cancel</button>
           <button class="primary-button" type="submit">Save Settings</button>
