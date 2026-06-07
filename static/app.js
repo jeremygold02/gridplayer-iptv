@@ -204,13 +204,12 @@ function writeBrowserPrefs(nextPrefs) {
 }
 
 function sanitizePinnedCategories(categories) {
-  const available = new Set(appState?.categories || []);
   const seen = new Set();
   const configured = Array.isArray(categories) ? categories : [];
   return configured
     .map((category) => String(category || "").trim())
     .filter((category) => {
-      if (!category || !available.has(category) || seen.has(category)) return false;
+      if (!category || seen.has(category)) return false;
       seen.add(category);
       return true;
     });

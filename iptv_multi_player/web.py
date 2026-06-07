@@ -36,7 +36,15 @@ def public_state(state: dict[str, Any] | None = None, enrich_games: bool = False
     sports_key = api_sports_key()
     players = public_players(settings)
     gridplayer = next((player for player in players["items"] if player["id"] == "gridplayer"), None)
-    categories = sorted({channel.get("group") or "Ungrouped" for channel in state["channels"].values()})
+    pinned_categories = {
+        str(category).strip()
+        for category in settings.get("pinned_categories", [])
+        if str(category).strip()
+    }
+    categories = sorted(
+        {channel.get("group") or "Ungrouped" for channel in state["channels"].values()}
+        | pinned_categories
+    )
     channel_values = list(state["channels"].values())
     if enrich_games:
         channels, sports_meta = enrich_channels_with_games(channel_values)
