@@ -196,6 +196,10 @@ button {
   background: #111616;
 }
 
+.player-picker[hidden] {
+  display: none;
+}
+
 .player-picker > span {
   color: var(--muted);
   font-size: 12px;

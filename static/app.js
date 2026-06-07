@@ -73,8 +73,19 @@ function playerById(playerId) {
   return appState?.players?.items?.find((player) => player.id === playerId) || null;
 }
 
+function selectablePlayers() {
+  return (appState?.players?.items || []).filter((player) => (
+    PLAYER_PATH_FIELDS[player.id]
+    && player.configured_path
+    && player.configured_available
+  ));
+}
+
 function selectedPlayerId() {
   const selected = appState?.players?.selected || appState?.settings?.selected_player || "gridplayer";
+  const options = selectablePlayers();
+  if (options.some((player) => player.id === selected)) return selected;
+  if (options.length) return options[0].id;
   return PLAYER_PATH_FIELDS[selected] ? selected : "gridplayer";
 }
 
@@ -536,7 +547,16 @@ function renderStatus() {
 
 function renderPlayerSelect() {
   if (!els.playerSelect) return;
+  const options = selectablePlayers();
+  const picker = els.playerSelect.closest(".player-picker");
+  els.playerSelect.innerHTML = options
+    .map((player) => `<option value="${escapeHtml(player.id)}">${escapeHtml(player.label)}</option>`)
+    .join("");
   els.playerSelect.value = selectedPlayerId();
+  els.playerSelect.disabled = options.length <= 1;
+  if (picker) {
+    picker.hidden = options.length <= 1;
+  }
 }
 
 function renderSources() {

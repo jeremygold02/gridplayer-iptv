@@ -51,13 +51,15 @@ def public_players(settings: dict[str, Any]) -> dict[str, Any]:
     items = []
     for player_id in PLAYER_ORDER:
         config = PLAYER_CONFIG[player_id]
+        configured_path = str(settings.get(config["path_key"], "") or "").strip()
         path = find_player(player_id, settings)
         items.append({
             "id": player_id,
             "label": config["label"],
             "available": path is not None,
             "path": str(path) if path else "",
-            "configured_path": str(settings.get(config["path_key"], "") or ""),
+            "configured_path": configured_path,
+            "configured_available": bool(configured_path and Path(configured_path).is_file()),
             "path_key": config["path_key"],
         })
     return {"selected": selected, "items": items}
