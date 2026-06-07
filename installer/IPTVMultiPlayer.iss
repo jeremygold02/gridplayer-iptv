@@ -43,4 +43,5 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\IPTV Multi Player.exe"; Wo
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\IPTV Multi Player.exe"; WorkingDir: "{app}"; IconFilename: "{app}\IPTV Multi Player.exe"; AppUserModelID: "{#MyAppUserModelID}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\IPTV Multi Player.exe"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{autoprograms}\{#MyAppName}.lnk"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: shellexec nowait postinstall skipifsilent; Check: WizardIsTaskSelected('startmenuicon')
+Filename: "{app}\IPTV Multi Player.exe"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent; Check: not WizardIsTaskSelected('startmenuicon')
