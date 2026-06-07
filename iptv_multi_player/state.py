@@ -12,6 +12,7 @@ from .config import (
     DATA_DIR,
     DEFAULT_PLAYER,
     ENV_PATH,
+    ESPN_CONFIG,
     LIBRARY_PATH,
     SOURCE_DIR,
     SPORTS_CACHE_PATH,
@@ -73,6 +74,13 @@ def write_state(state: dict[str, Any]) -> None:
 def default_sports_cache() -> dict[str, Any]:
     return {
         "version": 1,
+        "espn": {
+            sport: {
+                "endpoints": {},
+                "last_error": "",
+            }
+            for sport in ESPN_CONFIG
+        },
         "sports": {
             sport: {
                 "calls": {},
@@ -96,6 +104,11 @@ def read_sports_cache() -> dict[str, Any]:
 
     cache = default_sports_cache()
     cache.update(loaded)
+    cache.setdefault("espn", {})
+    for sport in ESPN_CONFIG:
+        existing = cache["espn"].setdefault(sport, {})
+        existing.setdefault("endpoints", {})
+        existing.setdefault("last_error", "")
     cache.setdefault("sports", {})
     for sport in SPORTS_CONFIG:
         existing = cache["sports"].setdefault(sport, {})

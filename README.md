@@ -8,7 +8,7 @@ A local Flask + pywebview IPTV client for importing M3U playlists and opening in
 - Browse channels by playlist, category, favorites, search, and sortable columns.
 - Choose GridPlayer, MPV, or VLC from the header before opening a stream.
 - Configure external player executable paths in Settings.
-- Optionally enrich sports-style channel titles with API-Sports game status.
+- Enrich sports-style channel titles with ESPN game status, with optional API-Sports fallback.
 
 ## Run From Source
 
@@ -24,9 +24,11 @@ For browser/server mode:
 .\.venv\Scripts\python.exe app.py --server --port 7555
 ```
 
-## API-Sports Key
+## Sports Data
 
-Sports enrichment is optional. The app reads `API_SPORTS_KEY` from a local `.env` file beside `app.py`, or from the Settings screen.
+ESPN scoreboard data is used first and does not require an API key. The app caches ESPN responses briefly so live games can refresh frequently without hammering endpoints.
+
+API-Sports is optional fallback data for sports or matches ESPN does not cover. The app reads `API_SPORTS_KEY` from a local `.env` file beside `app.py`, or from the Settings screen.
 
 ```env
 API_SPORTS_KEY=your_api_key_here

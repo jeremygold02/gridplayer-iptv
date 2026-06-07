@@ -28,6 +28,7 @@ ENV_PATH = APP_DIR / ".env"
 
 MAX_QUEUE_ITEMS = 16
 HTTP_TIMEOUT_SECONDS = 18
+ESPN_REFRESH_SECONDS = 30
 SPORTS_REFRESH_SECONDS = 15 * 60
 SPORTS_DAILY_CALL_LIMIT = 100
 DESKTOP_MODE = False
@@ -210,6 +211,73 @@ SPORTS_CONFIG = {
         "finished_codes": {"FT"},
         "inactive_codes": {"AW", "POST", "CANC", "INTR", "ABD"},
         "event_kind": "matchup",
+    },
+}
+
+ESPN_CONFIG = {
+    "football": {
+        "endpoints": (
+            ("fifa-friendly", "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.friendly/scoreboard"),
+            ("fifa-world", "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard"),
+            ("fifa-worldq-uefa", "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.worldq.uefa/scoreboard"),
+            ("fifa-worldq-concacaf", "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.worldq.concacaf/scoreboard"),
+            ("fifa-worldq-conmebol", "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.worldq.conmebol/scoreboard"),
+            ("fifa-worldq-caf", "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.worldq.caf/scoreboard"),
+            ("fifa-worldq-afc", "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.worldq.afc/scoreboard"),
+            ("mls", "https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard"),
+            ("premier-league", "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard"),
+            ("la-liga", "https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard"),
+            ("serie-a", "https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard"),
+            ("bundesliga", "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard"),
+            ("ligue-1", "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard"),
+            ("uefa-champions", "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard"),
+            ("uefa-europa", "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa/scoreboard"),
+            ("uefa-conference", "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa.conf/scoreboard"),
+        ),
+    },
+    "afl": {
+        "endpoints": (
+            ("afl", "https://site.api.espn.com/apis/site/v2/sports/australian-football/afl/scoreboard"),
+        ),
+    },
+    "baseball": {
+        "endpoints": (
+            ("mlb", "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"),
+        ),
+    },
+    "basketball": {
+        "endpoints": (
+            ("nba", "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"),
+            ("wnba", "https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard"),
+        ),
+    },
+    "formula_1": {
+        "endpoints": (
+            ("f1", "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard"),
+        ),
+    },
+    "hockey": {
+        "endpoints": (
+            ("nhl", "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard"),
+            ("mens-college", "https://site.api.espn.com/apis/site/v2/sports/hockey/mens-college-hockey/scoreboard"),
+        ),
+    },
+    "mma": {
+        "endpoints": (
+            ("ufc", "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard"),
+        ),
+    },
+    "nba": {
+        "endpoints": (
+            ("nba", "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"),
+        ),
+    },
+    "nfl": {
+        "endpoints": (
+            ("nfl", "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"),
+            ("ufl", "https://site.api.espn.com/apis/site/v2/sports/football/ufl/scoreboard"),
+            ("college-football", "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard"),
+        ),
     },
 }
 
