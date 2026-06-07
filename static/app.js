@@ -158,6 +158,7 @@ function mergeGameState(nextState) {
 
 function setAppState(nextState, options = {}) {
   appState = options.preserveGames ? mergeGameState(nextState) : nextState;
+  applyPinnedCategoryPrefs();
 }
 
 async function refreshSportsData(options = {}) {
@@ -195,6 +196,33 @@ function writeBrowserPrefs(nextPrefs) {
   } catch {
     // localStorage can be unavailable in restricted browser contexts.
   }
+}
+
+function sanitizePinnedCategories(categories) {
+  const available = new Set(appState?.categories || []);
+  const seen = new Set();
+  const configured = Array.isArray(categories) ? categories : [];
+  return configured
+    .map((category) => String(category || "").trim())
+    .filter((category) => {
+      if (!category || !available.has(category) || seen.has(category)) return false;
+      seen.add(category);
+      return true;
+    });
+}
+
+function applyPinnedCategoryPrefs() {
+  if (!appState) return;
+  const categories = desktopRuntime()
+    ? appState?.settings?.pinned_categories
+    : readBrowserPrefs().pinned_categories;
+  appState = {
+    ...appState,
+    settings: {
+      ...(appState.settings || {}),
+      pinned_categories: sanitizePinnedCategories(categories),
+    },
+  };
 }
 
 function nearestZoom(value) {
@@ -348,6 +376,52 @@ function gameInfo(channel) {
   };
 }
 
+function orderedCategories() {
+  const pinned = appState?.settings?.pinned_categories || [];
+  const pinnedSet = new Set(pinned);
+  return [
+    "all",
+    ...pinned,
+    ...(appState?.categories || []).filter((category) => !pinnedSet.has(category)),
+  ];
+}
+
+function categoryPinHtml(category, isPinned) {
+  const label = isPinned ? "Unpin category" : "Pin category";
+  const defaultIcon = isPinned ? "keep" : "keep_off";
+  const hoverIcon = isPinned ? "keep_off" : "keep";
+  return `
+    <span class="category-pin ${isPinned ? "pinned" : "unpinned"}" data-pin-category="${escapeHtml(category)}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">
+      ${iconHtml(defaultIcon, "nav-icon pin-default")}
+      ${iconHtml(hoverIcon, "nav-icon pin-hover")}
+    </span>
+  `;
+}
+
+async function toggleCategoryPin(category) {
+  const current = appState?.settings?.pinned_categories || [];
+  const next = current.includes(category)
+    ? current.filter((item) => item !== category)
+    : [...current, category];
+  if (desktopRuntime()) {
+    const data = await api("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ pinned_categories: next }),
+    });
+    setAppState(data.state, { preserveGames: true });
+  } else {
+    writeBrowserPrefs({ ...readBrowserPrefs(), pinned_categories: next });
+    appState = {
+      ...appState,
+      settings: {
+        ...(appState.settings || {}),
+        pinned_categories: sanitizePinnedCategories(next),
+      },
+    };
+  }
+  renderCategories();
+}
+
 function compareGameStatus(leftChannel, rightChannel) {
   const left = gameInfo(leftChannel);
   const right = gameInfo(rightChannel);
@@ -463,15 +537,19 @@ function renderSources() {
 }
 
 function renderCategories() {
-  const categories = ["all", ...appState.categories];
+  const categories = orderedCategories();
+  const pinnedSet = new Set(appState?.settings?.pinned_categories || []);
   els.categoryList.innerHTML = categories.map((category) => {
     const label = category === "all" ? "All Categories" : category;
     const count = category === "all"
       ? appState.channels.length
       : appState.channels.filter((channel) => channel.group === category).length;
+    const icon = category === "all"
+      ? iconHtml("category", "nav-icon")
+      : categoryPinHtml(category, pinnedSet.has(category));
     return `
       <button class="nav-row ${filters.category === category ? "active" : ""}" data-category="${escapeHtml(category)}" type="button">
-        ${iconHtml(category === "all" ? "category" : "label", "nav-icon")}
+        ${icon}
         <span>${escapeHtml(label)}</span>
         <span class="count">${count}</span>
       </button>
@@ -849,6 +927,16 @@ function bindEvents() {
   });
 
   els.categoryList.addEventListener("click", (event) => {
+    const pin = event.target.closest("[data-pin-category]");
+    if (pin) {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleCategoryPin(pin.dataset.pinCategory).catch((error) => {
+        showToast(error.message, "error");
+      });
+      return;
+    }
+
     const row = event.target.closest("[data-category]");
     if (!row) return;
     filters.category = row.dataset.category;

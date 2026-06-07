@@ -35,6 +35,7 @@ def default_state() -> dict[str, Any]:
             "auto_open_queue": False,
             "ui_zoom": 100,
             "ui_sidebar_width": 250,
+            "pinned_categories": [],
         },
     }
 

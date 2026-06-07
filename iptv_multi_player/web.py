@@ -334,6 +334,7 @@ def api_settings():
         "auto_open_queue",
         "ui_zoom",
         "ui_sidebar_width",
+        "pinned_categories",
     }
     with state_lock:
         state = read_state()
@@ -346,6 +347,16 @@ def api_settings():
                     settings[key] = normalize_player_id(payload[key])
                 elif key.endswith("_path"):
                     settings[key] = str(payload[key] or "").strip()
+                elif key == "pinned_categories":
+                    categories = payload.get(key) if isinstance(payload.get(key), list) else []
+                    pinned_categories = []
+                    seen_categories = set()
+                    for category in categories:
+                        category_name = str(category).strip()
+                        if category_name and category_name not in seen_categories:
+                            pinned_categories.append(category_name)
+                            seen_categories.add(category_name)
+                    settings[key] = pinned_categories
                 else:
                     settings[key] = payload[key]
         write_state(state)
