@@ -3,6 +3,7 @@ const ZOOM_LEVELS = [75, 90, 100, 110, 125, 150];
 const BROWSER_PREF_KEY = "gridplayer-iptv-ui";
 const SIDEBAR_MIN_WIDTH = 180;
 const SIDEBAR_MAX_WIDTH = 420;
+const ROW_DOUBLE_CLICK_MS = 450;
 const PLAYER_PATH_FIELDS = {
   gridplayer: "gridplayer_path",
   mpv: "mpv_path",
@@ -35,6 +36,10 @@ let uiPrefs = {
 let sidebarResize = null;
 let sportsRefreshTimer = null;
 let apiKeyVisible = false;
+let lastChannelClick = {
+  id: null,
+  time: 0,
+};
 
 function $(id) {
   return document.getElementById(id);
@@ -687,27 +692,25 @@ function bindEvents() {
     const row = event.target.closest("[data-channel-id]");
     if (!row) return;
     const channelId = row.dataset.channelId;
+    const action = event.target.closest("[data-action]")?.dataset.action;
+    const clickTime = Date.now();
+    const isRepeatedRowClick = !action
+      && lastChannelClick.id === channelId
+      && clickTime - lastChannelClick.time <= ROW_DOUBLE_CLICK_MS;
+    lastChannelClick = action ? { id: null, time: 0 } : { id: channelId, time: clickTime };
     selectedChannelId = channelId;
 
-    const action = event.target.closest("[data-action]")?.dataset.action;
     try {
       if (action === "favorite") {
         await refreshWithState(api(`/api/channels/${channelId}/favorite`, { method: "POST" }));
       } else if (action === "open") {
         await openChannel(channelId);
+      } else if (isRepeatedRowClick) {
+        lastChannelClick = { id: null, time: 0 };
+        await openChannel(channelId);
       } else {
         render();
       }
-    } catch (error) {
-      showToast(error.message, "error");
-    }
-  });
-
-  els.channelList.addEventListener("dblclick", async (event) => {
-    const row = event.target.closest("[data-channel-id]");
-    if (!row) return;
-    try {
-      await openChannel(row.dataset.channelId);
     } catch (error) {
       showToast(error.message, "error");
     }
