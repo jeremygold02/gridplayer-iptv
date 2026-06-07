@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import re
 import threading
 from typing import Any
 import urllib.error
+import urllib.request
 
 from flask import Flask, jsonify, render_template, request, send_file
 
 from . import config
+from . import APP_NAME, APP_VERSION, GITHUB_REPO_URL
 from .config import API_SPORTS_KEY_NAME, ASSET_DIR, MAX_QUEUE_ITEMS, QUEUE_EXPORT_PATH
 from .players import launch_player, normalize_player_id, player_label, public_players
 from .playlists import (
@@ -26,6 +30,48 @@ app = Flask(
     static_folder=str(ASSET_DIR / "static"),
 )
 state_lock = threading.RLock()
+GITHUB_API_REPO = "https://api.github.com/repos/jeremygold02/iptv-multi-player"
+VERSION_PATTERN = re.compile(r"\d+(?:\.\d+){0,2}")
+
+
+def version_parts(value: str) -> tuple[int, int, int]:
+    match = VERSION_PATTERN.search(str(value or ""))
+    if not match:
+        return (0, 0, 0)
+    parts = [int(part) for part in match.group(0).split(".")[:3]]
+    return tuple((parts + [0, 0, 0])[:3])
+
+
+def github_json(path: str) -> Any:
+    request = urllib.request.Request(
+        f"{GITHUB_API_REPO}{path}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "IPTV-Multi-Player",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=8) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def latest_github_version() -> dict[str, str] | None:
+    try:
+        release = github_json("/releases/latest")
+        tag_name = str(release.get("tag_name") or "").strip()
+        html_url = str(release.get("html_url") or GITHUB_REPO_URL).strip()
+        if tag_name:
+            return {"version": tag_name, "url": html_url, "source": "release"}
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            raise
+
+    tags = github_json("/tags?per_page=1")
+    if tags:
+        tag = tags[0]
+        tag_name = str(tag.get("name") or "").strip()
+        if tag_name:
+            return {"version": tag_name, "url": f"{GITHUB_REPO_URL}/releases/tag/{tag_name}", "source": "tag"}
+    return None
 
 
 def public_state() -> dict[str, Any]:
@@ -50,6 +96,11 @@ def public_state() -> dict[str, Any]:
             "key": sports_key,
             "configured": bool(sports_key),
         },
+        "app": {
+            "name": APP_NAME,
+            "version": APP_VERSION,
+            "repo_url": GITHUB_REPO_URL,
+        },
         "gridplayer": {
             "available": bool(gridplayer and gridplayer["available"]),
             "path": gridplayer["path"] if gridplayer else "",
@@ -73,6 +124,46 @@ def index():
 def api_state():
     with state_lock:
         return jsonify({"success": True, "data": public_state()})
+
+
+@app.get("/api/update-check")
+def api_update_check():
+    try:
+        latest = latest_github_version()
+    except Exception as exc:  # noqa: BLE001 - UI should get a concise failure message
+        return json_error(f"Could not check for updates: {exc}", 502)
+
+    current = f"v{APP_VERSION}"
+    if latest is None:
+        return jsonify({
+            "success": True,
+            "data": {
+                "current_version": current,
+                "latest_version": "",
+                "update_available": False,
+                "repo_url": GITHUB_REPO_URL,
+                "message": "No published releases or tags were found.",
+            },
+        })
+
+    latest_version = latest["version"]
+    update_available = version_parts(latest_version) > version_parts(APP_VERSION)
+    message = (
+        f"Update available: {latest_version}."
+        if update_available
+        else f"You are on the latest published version ({latest_version})."
+    )
+    return jsonify({
+        "success": True,
+        "data": {
+            "current_version": current,
+            "latest_version": latest_version,
+            "update_available": update_available,
+            "repo_url": latest["url"],
+            "source": latest["source"],
+            "message": message,
+        },
+    })
 
 
 @app.post("/api/import-file")

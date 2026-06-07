@@ -83,6 +83,14 @@ function channelById(channelId) {
   return appState?.channels.find((channel) => channel.id === channelId) || null;
 }
 
+function appMeta() {
+  return {
+    name: appState?.app?.name || "IPTV Multi Player",
+    version: appState?.app?.version || "0.1.0",
+    repoUrl: appState?.app?.repo_url || "https://github.com/jeremygold02/iptv-multi-player",
+  };
+}
+
 function iconHtml(name, extraClass = "") {
   return `<span class="material-icons ${extraClass}" aria-hidden="true">${escapeHtml(name)}</span>`;
 }
@@ -325,7 +333,7 @@ function gameStatusHtml(channel) {
   const subtext = game.score || game.subtext || game.start_time || "";
   return `
     <div class="game-status ${escapeHtml(game.kind)}">
-      <strong>${escapeHtml(game.text || "Unknown")}</strong>
+      <strong><span class="game-status-label">${escapeHtml(game.text || "Unknown")}</span></strong>
       ${subtext ? `<small>${escapeHtml(subtext)}</small>` : ""}
     </div>
   `;
@@ -523,6 +531,15 @@ function fillSettingsForm() {
   setApiKeyVisibility(false);
 }
 
+function fillAboutDialog() {
+  const meta = appMeta();
+  els.aboutVersion.textContent = `${meta.name} v${meta.version}`;
+  els.aboutRepoLink.href = meta.repoUrl;
+  els.aboutRepoLink.textContent = meta.repoUrl;
+  els.updateStatus.textContent = "";
+  els.checkUpdatesButton.disabled = false;
+}
+
 function setApiKeyVisibility(visible) {
   apiKeyVisible = Boolean(visible);
   els.apiSportsKeyInput.type = apiKeyVisible ? "text" : "password";
@@ -544,6 +561,7 @@ function openModal(modal) {
 function closeModals() {
   els.urlModal.hidden = true;
   els.settingsModal.hidden = true;
+  els.aboutModal.hidden = true;
 }
 
 function bindEvents() {
@@ -554,8 +572,32 @@ function bindEvents() {
     openModal(els.settingsModal);
   });
 
+  els.aboutButton.addEventListener("click", () => {
+    fillAboutDialog();
+    els.settingsModal.hidden = true;
+    openModal(els.aboutModal);
+  });
+
   document.querySelectorAll("[data-close-modal]").forEach((button) => {
     button.addEventListener("click", closeModals);
+  });
+
+  els.checkUpdatesButton.addEventListener("click", async () => {
+    els.checkUpdatesButton.disabled = true;
+    els.updateStatus.className = "update-status";
+    els.updateStatus.textContent = "Checking for updates...";
+    try {
+      const result = await api("/api/update-check");
+      els.updateStatus.className = `update-status ${result.update_available ? "available" : ""}`;
+      els.updateStatus.innerHTML = result.update_available
+        ? `${escapeHtml(result.message)} <a href="${escapeHtml(result.repo_url)}" target="_blank" rel="noopener noreferrer">Open update</a>`
+        : escapeHtml(result.message);
+    } catch (error) {
+      els.updateStatus.className = "update-status error";
+      els.updateStatus.textContent = error.message;
+    } finally {
+      els.checkUpdatesButton.disabled = false;
+    }
   });
 
   els.fileInput.addEventListener("change", async () => {
@@ -748,7 +790,8 @@ function initEls() {
     "searchInput", "channelList", "detailPanel", "fileInput", "urlModal",
     "urlForm", "urlNameInput", "urlInput", "settingsModal", "settingsForm",
     "gridplayerPathInput", "mpvPathInput", "vlcPathInput", "apiSportsKeyInput",
-    "toggleApiKeyButton", "toast",
+    "toggleApiKeyButton", "aboutButton", "aboutModal", "aboutVersion", "aboutRepoLink",
+    "checkUpdatesButton", "updateStatus", "toast",
   ].forEach((id) => {
     els[id] = $(id);
   });

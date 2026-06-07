@@ -162,11 +162,42 @@
             </button>
           </div>
         </div>
-        <div class="modal-actions">
-          <button class="secondary-button" data-close-modal type="button">Cancel</button>
-          <button class="primary-button" type="submit">Save Settings</button>
+        <div class="modal-actions settings-actions">
+          <button class="secondary-button" id="aboutButton" type="button">
+            <span class="material-icons" aria-hidden="true">info</span>
+            <span>About</span>
+          </button>
+          <div class="modal-actions-group">
+            <button class="secondary-button" data-close-modal type="button">Cancel</button>
+            <button class="primary-button" type="submit">Save Settings</button>
+          </div>
         </div>
       </form>
+    </div>
+
+    <div class="modal-backdrop" id="aboutModal" hidden>
+      <section class="modal about-modal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+        <div class="modal-head">
+          <h2 id="aboutTitle">About</h2>
+          <button class="icon-button" data-close-modal type="button" title="Close">
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <div class="about-body">
+          <div class="about-app-title" id="aboutVersion">IPTV Multi Player v0.1.0</div>
+          <a id="aboutRepoLink" href="https://github.com/jeremygold02/iptv-multi-player" target="_blank" rel="noopener noreferrer">
+            https://github.com/jeremygold02/iptv-multi-player
+          </a>
+          <div class="update-status" id="updateStatus" role="status" aria-live="polite"></div>
+        </div>
+        <div class="modal-actions">
+          <button class="secondary-button" id="checkUpdatesButton" type="button">
+            <span class="material-icons" aria-hidden="true">system_update_alt</span>
+            <span>Check for Updates</span>
+          </button>
+          <button class="primary-button" data-close-modal type="button">Done</button>
+        </div>
+      </section>
     </div>
 
     <div id="toast" class="toast" hidden></div>
