@@ -71,6 +71,7 @@ jobs:
             --windowed `
             --icon "icon.ico" `
             --name "IPTV Multi Player" `
+            --add-data "icon.ico;." `
             --add-data "templates;templates" `
             --add-data "static;static" `
             --collect-submodules webview `

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import socket
 import threading
 import time
@@ -18,6 +19,26 @@ try:
     from waitress import serve as waitress_serve
 except ImportError:  # pragma: no cover
     waitress_serve = None
+
+
+APP_USER_MODEL_ID = "jeremygold02.IPTVMultiPlayer"
+
+
+def set_windows_app_user_model_id() -> None:
+    if os.name != "nt":
+        return
+
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+    except Exception:
+        pass
+
+
+def window_icon_path() -> str | None:
+    icon_path = config.ASSET_DIR / "icon.ico"
+    return str(icon_path) if icon_path.is_file() else None
 
 
 def find_free_port(host: str) -> int:
@@ -52,6 +73,7 @@ def main() -> None:
         return
 
     config.DESKTOP_MODE = True
+    set_windows_app_user_model_id()
     server_thread = threading.Thread(target=serve_app, args=(args.host, port), daemon=True)
     server_thread.start()
     time.sleep(0.45)
@@ -64,7 +86,7 @@ def main() -> None:
         min_size=(1100, 720),
         text_select=True,
     )
-    webview.start(debug=args.debug)
+    webview.start(debug=args.debug, icon=window_icon_path())
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 #define MyAppName "IPTV Multi Player"
 #define MyAppPublisher "jeremygold02"
 #define MyAppURL "https://github.com/jeremygold02/iptv-multi-player"
+#define MyAppUserModelID "jeremygold02.IPTVMultiPlayer"
 
 #ifndef MyAppVersion
 #define MyAppVersion "0.1.0"
@@ -38,8 +39,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "..\dist\IPTV Multi Player.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\IPTV Multi Player.exe"; WorkingDir: "{app}"; Tasks: startmenuicon
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\IPTV Multi Player.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\IPTV Multi Player.exe"; WorkingDir: "{app}"; IconFilename: "{app}\IPTV Multi Player.exe"; AppUserModelID: "{#MyAppUserModelID}"; Tasks: startmenuicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\IPTV Multi Player.exe"; WorkingDir: "{app}"; IconFilename: "{app}\IPTV Multi Player.exe"; AppUserModelID: "{#MyAppUserModelID}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\IPTV Multi Player.exe"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
