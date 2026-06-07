@@ -111,29 +111,69 @@ def download_file(url: str, target: Path) -> None:
         shutil.copyfileobj(response, handle)
 
 
+def powershell_literal(value: Path | str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
+
+
 def write_updater_script(script_path: Path, new_exe: Path, target_exe: Path, pid: int) -> None:
     log_path = script_path.with_suffix(".log")
     script_path.write_text(
         "\n".join([
-            "@echo off",
-            "setlocal EnableExtensions",
-            f'set "TARGET={target_exe}"',
-            f'set "NEW_EXE={new_exe}"',
-            f'set "APP_DIR={target_exe.parent}"',
-            f'set "PID={pid}"',
-            f'set "LOG={log_path}"',
-            'echo Starting IPTV Multi Player update > "%LOG%"',
-            ":wait_for_exit",
-            'tasklist /FI "PID eq %PID%" /NH | findstr /C:"%PID%" >nul',
-            "if not errorlevel 1 (",
-            "  timeout /t 1 /nobreak >nul",
-            "  goto wait_for_exit",
-            ")",
-            'copy /Y "%NEW_EXE%" "%TARGET%" >> "%LOG%" 2>&1',
-            "if errorlevel 1 exit /b 1",
-            'start "" /D "%APP_DIR%" "%TARGET%"',
-            'del /F /Q "%NEW_EXE%" >nul 2>&1',
-            'del /F /Q "%~f0" >nul 2>&1',
+            "$ErrorActionPreference = 'Stop'",
+            f"$target = {powershell_literal(target_exe)}",
+            f"$newExe = {powershell_literal(new_exe)}",
+            f"$appDir = {powershell_literal(target_exe.parent)}",
+            f"$pidToWait = {pid}",
+            f"$log = {powershell_literal(log_path)}",
+            "",
+            "function Write-UpdateLog {",
+            "  param([string]$Message)",
+            "  Add-Content -LiteralPath $log -Value \"$(Get-Date -Format o) $Message\"",
+            "}",
+            "",
+            "function Get-AppProcesses {",
+            "  @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $target })",
+            "}",
+            "",
+            "Set-Content -LiteralPath $log -Value \"$(Get-Date -Format o) Starting IPTV Multi Player update\"",
+            "try {",
+            "  $deadline = (Get-Date).AddSeconds(20)",
+            "  while ((Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {",
+            "    Start-Sleep -Milliseconds 500",
+            "  }",
+            "",
+            "  $remaining = @(Get-AppProcesses)",
+            "  if ($remaining.Count -gt 0) {",
+            "    Write-UpdateLog \"Stopping $($remaining.Count) old app process(es).\"",
+            "    foreach ($process in $remaining) {",
+            "      Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue",
+            "    }",
+            "    Start-Sleep -Milliseconds 800",
+            "  }",
+            "",
+            "  $copied = $false",
+            "  for ($attempt = 1; $attempt -le 60; $attempt++) {",
+            "    try {",
+            "      Copy-Item -LiteralPath $newExe -Destination $target -Force -ErrorAction Stop",
+            "      $copied = $true",
+            "      break",
+            "    } catch {",
+            "      Write-UpdateLog \"Copy attempt $attempt failed: $($_.Exception.Message)\"",
+            "      Start-Sleep -Seconds 1",
+            "    }",
+            "  }",
+            "  if (-not $copied) {",
+            "    throw 'Could not replace the app after 60 attempts.'",
+            "  }",
+            "",
+            "  Write-UpdateLog 'Starting updated app.'",
+            "  Start-Process -FilePath $target -WorkingDirectory $appDir",
+            "  Remove-Item -LiteralPath $newExe -Force -ErrorAction SilentlyContinue",
+            "  Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue",
+            "} catch {",
+            "  Write-UpdateLog \"Update failed: $($_.Exception.Message)\"",
+            "  exit 1",
+            "}",
             "",
         ]),
         encoding="utf-8",
@@ -157,19 +197,32 @@ def install_update() -> dict[str, Any]:
     target_exe = Path(sys.executable).resolve()
     temp_dir = Path(tempfile.mkdtemp(prefix="iptv_multi_player_update_"))
     new_exe = temp_dir / RELEASE_ASSET_NAME
-    script_path = temp_dir / "update.cmd"
+    script_path = temp_dir / "update.ps1"
 
     download_file(update["asset_url"], new_exe)
     write_updater_script(script_path, new_exe, target_exe, os.getpid())
 
     creationflags = 0
+    startupinfo = None
     if sys.platform == "win32":
-        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-        creationflags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        creationflags = subprocess.DETACHED_PROCESS | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
     subprocess.Popen(
-        ["cmd.exe", "/c", str(script_path)],
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+            str(script_path),
+        ],
         cwd=str(target_exe.parent),
         creationflags=creationflags,
+        startupinfo=startupinfo,
         close_fds=True,
     )
     threading.Timer(0.8, exit_process_later).start()
