@@ -1,42 +1,43 @@
 # IPTV Multi Player
 
-A local Flask + pywebview IPTV control app for managing live M3U channels and launching individual streams in GridPlayer, MPV, or VLC.
+A local Flask + pywebview IPTV client for importing M3U playlists and opening individual streams in GridPlayer, MPV, or VLC.
 
-## Run
+## Features
+
+- Import local `.m3u`/`.m3u8` playlists or playlist URLs.
+- Browse channels by playlist, category, favorites, search, and sortable columns.
+- Choose GridPlayer, MPV, or VLC from the header before opening a stream.
+- Configure external player executable paths in Settings.
+- Optionally enrich sports-style channel titles with API-Sports game status.
+
+## Run From Source
 
 ```powershell
-python app.py
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe app.py
 ```
 
-For browser testing or headless use:
+For browser/server mode:
 
 ```powershell
-python app.py --server --port 7555
+.\.venv\Scripts\python.exe app.py --server --port 7555
 ```
 
-## Notes
+## API-Sports Key
 
-- Import a local `.m3u`/`.m3u8` file or a playlist URL.
-- Use the header dropdown to choose GridPlayer, MPV, or VLC before opening a channel.
-- Click a channel's open button to launch that stream in the selected player.
-- If a player is not auto-detected, set the executable path in Settings.
-
-## API-Sports
-
-The app can enrich sports-style channel titles with game status from API-Sports. It parses channel names, matches likely football, basketball, and MMA events, and shows whether a matched game is live, scheduled, finished, inactive, or unknown. Calls are cached in `data/sports_cache.json` and refresh about every 15 minutes while the app is open, with a 100-call daily limit per sport.
-
-Put your API-Sports key in Settings under `API-Sports key`, or create a gitignored `.env` file beside `app.py` with:
+Sports enrichment is optional. The app reads `API_SPORTS_KEY` from a local `.env` file beside `app.py`, or from the Settings screen.
 
 ```env
 API_SPORTS_KEY=your_api_key_here
 ```
 
-For the built exe, place `.env` beside `IPTV Multi Player.exe`. The `.env` file is ignored by git and should not be committed.
+The key is not committed. Imported playlists, cached API responses, favorites, settings, and other local runtime data are stored under `data/`, which is also ignored by git.
 
-## Build
+## Project Layout
 
-```bat
-build_exe.bat
-```
-
-The build script creates a temporary virtual environment, installs requirements and PyInstaller, builds `IPTV Multi Player.exe` into the project root, then removes `.build_venv`, `build`, `dist`, and the generated spec file.
+- `app.py` starts the Flask server and pywebview desktop window.
+- `iptv_multi_player/` contains the backend modules.
+- `templates/` contains the HTML shell.
+- `static/` contains frontend JavaScript and CSS.
+- `requirements.txt` lists Python runtime dependencies.
