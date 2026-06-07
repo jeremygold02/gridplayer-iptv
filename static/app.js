@@ -83,6 +83,10 @@ function channelById(channelId) {
   return appState?.channels.find((channel) => channel.id === channelId) || null;
 }
 
+function iconHtml(name, extraClass = "") {
+  return `<span class="material-icons ${extraClass}" aria-hidden="true">${escapeHtml(name)}</span>`;
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: options.body instanceof FormData ? undefined : { "Content-Type": "application/json" },
@@ -397,13 +401,13 @@ function renderPlayerSelect() {
 function renderSources() {
   const rows = [
     `<button class="source-row ${filters.sourceId === "all" ? "active" : ""}" data-source-id="all" type="button">
-      <span class="nav-icon">≡</span>
+      ${iconHtml("playlist_play", "nav-icon")}
       <span><span class="source-name">All Playlists</span><span class="source-meta">${appState.channels.length} channels</span></span>
       <span></span>
     </button>`,
     ...appState.sources.map((source) => `
       <button class="source-row ${filters.sourceId === source.id ? "active" : ""}" data-source-id="${source.id}" type="button">
-        <span class="nav-icon">${source.kind === "url" ? "↗" : "▣"}</span>
+        ${iconHtml(source.kind === "url" ? "link" : "folder", "nav-icon")}
         <span><span class="source-name">${escapeHtml(source.name)}</span><span class="source-meta">${source.channel_count || 0} channels</span></span>
         <span class="source-meta">${source.kind}</span>
       </button>
@@ -421,7 +425,7 @@ function renderCategories() {
       : appState.channels.filter((channel) => channel.group === category).length;
     return `
       <button class="nav-row ${filters.category === category ? "active" : ""}" data-category="${escapeHtml(category)}" type="button">
-        <span class="nav-icon">${category === "all" ? "◇" : "•"}</span>
+        ${iconHtml(category === "all" ? "category" : "label", "nav-icon")}
         <span>${escapeHtml(label)}</span>
         <span class="count">${count}</span>
       </button>
@@ -452,9 +456,11 @@ function renderChannels() {
       <div class="group-pill">${escapeHtml(channel.group)}</div>
       ${gameStatusHtml(channel)}
       <div class="row-actions">
-        <button class="icon-button ${favorites.has(channel.id) ? "active" : ""}" data-action="favorite" title="Favorite" type="button">☆</button>
+        <button class="icon-button ${favorites.has(channel.id) ? "active" : ""}" data-action="favorite" title="Favorite" type="button">
+          ${iconHtml(favorites.has(channel.id) ? "star" : "star_border")}
+        </button>
         <button class="icon-button" data-action="open" title="Open in ${escapeHtml(playerLabel)}" type="button">
-          <svg viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M9 7h8v8"/><path d="M5 5h6M5 5v14h14v-6"/></svg>
+          ${iconHtml("open_in_new")}
         </button>
       </div>
     </div>
@@ -487,7 +493,7 @@ function renderDetail() {
       </div>
       <div class="detail-actions" data-channel-id="${channel.id}">
         <button class="primary-button" data-detail-action="open" type="button">
-          <svg viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M9 7h8v8"/><path d="M5 5h6M5 5v14h14v-6"/></svg>
+          ${iconHtml("open_in_new")}
           <span>Open in ${escapeHtml(playerLabel)}</span>
         </button>
       </div>
@@ -523,6 +529,10 @@ function setApiKeyVisibility(visible) {
   els.toggleApiKeyButton.title = apiKeyVisible ? "Hide API key" : "Show API key";
   els.toggleApiKeyButton.setAttribute("aria-label", apiKeyVisible ? "Hide API key" : "Show API key");
   els.toggleApiKeyButton.setAttribute("aria-pressed", String(apiKeyVisible));
+  const icon = els.toggleApiKeyButton.querySelector(".material-icons");
+  if (icon) {
+    icon.textContent = apiKeyVisible ? "visibility_off" : "visibility";
+  }
 }
 
 function openModal(modal) {
