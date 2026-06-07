@@ -35,7 +35,7 @@ API-Sports is optional fallback data for sports or matches ESPN does not cover. 
 API_SPORTS_KEY=your_api_key_here
 ```
 
-The key is not committed. Imported playlists, cached API responses, favorites, settings, and other local runtime data are stored under `data/`, which is also ignored by git.
+Imported playlists, cached API responses, favorites, settings, and other local runtime data are stored under `data/`.
 
 ## Project Layout
 
@@ -44,9 +44,3 @@ The key is not committed. Imported playlists, cached API responses, favorites, s
 - `templates/` contains the HTML shell.
 - `static/` contains frontend JavaScript and CSS.
 - `requirements.txt` lists Python runtime dependencies.
-
-## Releases and Updates
-
-Pushes to `main` build a Windows exe in GitHub Actions and publish it as a GitHub Release asset. Release versions start at `v0.1.0` and increment the patch version for each release build.
-
-Packaged Windows builds check the latest GitHub release on launch. When a newer release exists, the app can download the new exe, start a temporary updater helper, exit, replace itself, and restart.
