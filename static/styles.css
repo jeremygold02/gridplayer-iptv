@@ -331,6 +331,62 @@ button {
   text-align: left;
 }
 
+.source-row-with-action {
+  grid-template-columns: minmax(0, 1fr) 26px;
+  column-gap: 4px;
+  padding: 4px 4px 4px 7px;
+}
+
+.source-select {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.source-select > span:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.source-kind {
+  justify-self: end;
+}
+
+.source-remove {
+  width: 26px;
+  height: 26px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.source-remove .material-icons {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+}
+
+.source-remove:hover {
+  border-color: rgba(255, 90, 95, 0.45);
+  background: rgba(255, 90, 95, 0.1);
+  color: var(--red);
+}
+
+.source-select:focus-visible,
+.source-remove:focus-visible {
+  outline: 1px solid rgba(16, 183, 164, 0.75);
+  outline-offset: 1px;
+}
+
 .source-row:hover,
 .nav-row:hover {
   border-color: rgba(16, 183, 164, 0.5);
@@ -827,6 +883,16 @@ button {
   color: var(--text);
 }
 
+.danger-button {
+  border-color: rgba(255, 90, 95, 0.5);
+  background: linear-gradient(180deg, #7c2a2f, #551c20);
+}
+
+.danger-button:hover {
+  border-color: rgba(255, 90, 95, 0.85);
+  background: #743038;
+}
+
 .detail-content {
   display: grid;
   align-content: start;
@@ -934,6 +1000,17 @@ button {
   padding: 0 12px;
   border: 1px solid var(--line);
   background: #0e1313;
+}
+
+.modal-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.modal-copy strong {
+  color: var(--text);
 }
 
 .secret-input-row {

@@ -11,6 +11,7 @@ from .config import API_SPORTS_KEY_NAME, ASSET_DIR, MAX_QUEUE_ITEMS, QUEUE_EXPOR
 from .players import launch_player, normalize_player_id, player_label, public_players
 from .playlists import (
     fetch_playlist_url,
+    remove_source_file,
     replace_source_channels,
     source_content,
     upsert_file_source,
@@ -197,6 +198,7 @@ def api_delete_source(source_id: str):
         if state.get("selected_source_id") == source_id:
             state["selected_source_id"] = "all"
         write_state(state)
+        remove_source_file(source)
         return jsonify({"success": True, "data": {"state": public_state()}})
 
 

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 import urllib.request
 
-from .config import ATTR_RE, HTTP_TIMEOUT_SECONDS, SOURCE_DIR
+from .config import APP_DIR, ATTR_RE, HTTP_TIMEOUT_SECONDS, SOURCE_DIR
 from .state import ensure_data_dirs, make_id, now_ts, read_state, write_state
 
 def parse_extinf(line: str) -> tuple[dict[str, str], str]:
@@ -70,6 +70,35 @@ def source_filename(source_id: str) -> Path:
     return SOURCE_DIR / f"{source_id}.m3u"
 
 
+def source_storage_path(source: dict[str, Any]) -> Path | None:
+    stored_path = str(source.get("stored_path") or "").strip()
+    if not stored_path:
+        return None
+
+    path = Path(stored_path)
+    if not path.is_absolute():
+        path = APP_DIR / path
+    return path
+
+
+def remove_source_file(source: dict[str, Any]) -> None:
+    if source.get("kind") != "file":
+        return
+
+    stored_path = source_storage_path(source)
+    if stored_path is None:
+        return
+
+    try:
+        resolved_path = stored_path.resolve()
+        if not resolved_path.is_relative_to(SOURCE_DIR.resolve()):
+            return
+        if resolved_path.is_file():
+            resolved_path.unlink()
+    except OSError:
+        return
+
+
 def fetch_playlist_url(url: str) -> str:
     req = urllib.request.Request(
         url,
@@ -87,9 +116,9 @@ def source_content(source: dict[str, Any]) -> str:
     if source.get("kind") == "url":
         return fetch_playlist_url(source["url"])
 
-    stored_path = Path(source["stored_path"])
-    if not stored_path.is_absolute():
-        stored_path = APP_DIR / stored_path
+    stored_path = source_storage_path(source)
+    if stored_path is None:
+        raise FileNotFoundError("Source file is missing.")
     return stored_path.read_text(encoding="utf-8-sig", errors="replace")
 
 

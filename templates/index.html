@@ -133,6 +133,25 @@
       </form>
     </div>
 
+    <div class="modal-backdrop" id="removeSourceModal" hidden>
+      <section class="modal remove-source-modal" role="dialog" aria-modal="true" aria-labelledby="removeSourceTitle">
+        <div class="modal-head">
+          <h2 id="removeSourceTitle">Remove Playlist</h2>
+          <button class="icon-button" data-close-modal type="button" title="Close">
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <p class="modal-copy">Remove <strong id="removeSourceName">this playlist</strong>? Its channels will be removed from the library.</p>
+        <div class="modal-actions">
+          <button class="secondary-button" data-close-modal type="button">Cancel</button>
+          <button class="primary-button danger-button" id="confirmRemoveSourceButton" type="button">
+            <span class="material-icons" aria-hidden="true">delete</span>
+            <span>Remove</span>
+          </button>
+        </div>
+      </section>
+    </div>
+
     <div class="modal-backdrop" id="settingsModal" hidden>
       <form class="modal" id="settingsForm">
         <div class="modal-head">

@@ -40,6 +40,7 @@ let sportsRefreshInFlight = false;
 let apiKeyVisible = false;
 let launchUpdateChecked = false;
 let pendingUpdate = null;
+let pendingSourceRemovalId = null;
 let lastChannelClick = {
   id: null,
   time: 0,
@@ -62,6 +63,10 @@ function initials(name) {
 function sourceName(sourceId) {
   const source = appState?.sources.find((item) => item.id === sourceId);
   return source?.name || "Unknown source";
+}
+
+function sourceById(sourceId) {
+  return appState?.sources?.find((source) => source.id === sourceId) || null;
 }
 
 function playerById(playerId) {
@@ -480,6 +485,7 @@ function escapeHtml(value) {
 
 function render() {
   if (!appState) return;
+  syncFilters();
   syncSelectedChannel();
   renderStatus();
   renderPlayerSelect();
@@ -507,6 +513,22 @@ function syncSelectedChannel() {
   }
 }
 
+function syncFilters() {
+  const sourceIds = new Set(["all", ...(appState?.sources || []).map((source) => source.id)]);
+  if (!sourceIds.has(filters.sourceId)) {
+    filters.sourceId = "all";
+  }
+
+  const categories = new Set([
+    "all",
+    ...(appState?.categories || []),
+    ...(appState?.settings?.pinned_categories || []),
+  ]);
+  if (!categories.has(filters.category)) {
+    filters.category = "all";
+  }
+}
+
 function renderStatus() {
   const total = appState.channels.length;
   els.allCount.textContent = total;
@@ -526,11 +548,16 @@ function renderSources() {
       <span></span>
     </button>`,
     ...appState.sources.map((source) => `
-      <button class="source-row ${filters.sourceId === source.id ? "active" : ""}" data-source-id="${source.id}" type="button">
-        ${iconHtml(source.kind === "url" ? "link" : "folder", "nav-icon")}
-        <span><span class="source-name">${escapeHtml(source.name)}</span><span class="source-meta">${source.channel_count || 0} channels</span></span>
-        <span class="source-meta">${source.kind}</span>
-      </button>
+      <div class="source-row source-row-with-action ${filters.sourceId === source.id ? "active" : ""}">
+        <button class="source-select" data-source-id="${escapeHtml(source.id)}" type="button">
+          ${iconHtml(source.kind === "url" ? "link" : "folder", "nav-icon")}
+          <span><span class="source-name">${escapeHtml(source.name)}</span><span class="source-meta">${source.channel_count || 0} channels</span></span>
+          <span class="source-meta source-kind">${escapeHtml(source.kind)}</span>
+        </button>
+        <button class="source-remove icon-button" data-source-remove-id="${escapeHtml(source.id)}" type="button" title="Remove playlist" aria-label="Remove ${escapeHtml(source.name)}">
+          ${iconHtml("delete")}
+        </button>
+      </div>
     `),
   ];
   els.sourceList.innerHTML = rows.join("");
@@ -665,6 +692,37 @@ function fillAboutDialog() {
   els.aboutInstallUpdateButton.disabled = false;
 }
 
+function showRemoveSourceDialog(sourceId) {
+  const source = sourceById(sourceId);
+  if (!source) return;
+  pendingSourceRemovalId = sourceId;
+  els.removeSourceName.textContent = source.name;
+  els.confirmRemoveSourceButton.disabled = false;
+  closeModals();
+  openModal(els.removeSourceModal);
+}
+
+async function removePendingSource() {
+  const sourceId = pendingSourceRemovalId;
+  if (!sourceId) return;
+
+  const source = sourceById(sourceId);
+  els.confirmRemoveSourceButton.disabled = true;
+  try {
+    const data = await api(`/api/sources/${encodeURIComponent(sourceId)}`, { method: "DELETE" });
+    setAppState(data.state, { preserveGames: true });
+    pendingSourceRemovalId = null;
+    closeModals();
+    render();
+    scheduleSportsRefresh();
+    showToast(`Removed ${source?.name || "playlist"}`);
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    els.confirmRemoveSourceButton.disabled = false;
+  }
+}
+
 function updateUrl(update) {
   return update?.release_url || update?.repo_url || appMeta().repoUrl;
 }
@@ -746,6 +804,7 @@ function openModal(modal) {
 
 function closeModals() {
   els.urlModal.hidden = true;
+  els.removeSourceModal.hidden = true;
   els.settingsModal.hidden = true;
   els.aboutModal.hidden = true;
   els.updateModal.hidden = true;
@@ -790,6 +849,7 @@ function bindEvents() {
   });
 
   els.updateInstallButton.addEventListener("click", installPendingUpdate);
+  els.confirmRemoveSourceButton.addEventListener("click", removePendingSource);
 
   els.fileInput.addEventListener("change", async () => {
     const file = els.fileInput.files[0];
@@ -908,6 +968,14 @@ function bindEvents() {
   });
 
   els.sourceList.addEventListener("click", (event) => {
+    const removeButton = event.target.closest("[data-source-remove-id]");
+    if (removeButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      showRemoveSourceDialog(removeButton.dataset.sourceRemoveId);
+      return;
+    }
+
     const row = event.target.closest("[data-source-id]");
     if (!row) return;
     filters.sourceId = row.dataset.sourceId;
@@ -991,7 +1059,8 @@ function initEls() {
     "playerSelect", "zoomOutButton", "zoomValue", "zoomInButton", "sidebarResizer",
     "sourceList", "allCount", "favoriteCount", "categoryList", "resultCount",
     "searchInput", "channelList", "detailPanel", "fileInput", "urlModal",
-    "urlForm", "urlNameInput", "urlInput", "settingsModal", "settingsForm",
+    "urlForm", "urlNameInput", "urlInput", "removeSourceModal", "removeSourceName",
+    "confirmRemoveSourceButton", "settingsModal", "settingsForm",
     "gridplayerPathInput", "mpvPathInput", "vlcPathInput", "apiSportsKeyInput",
     "toggleApiKeyButton", "aboutButton", "aboutModal", "aboutVersion", "aboutRepoLink",
     "checkUpdatesButton", "aboutInstallUpdateButton", "updateStatus", "updateModal",
