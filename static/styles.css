@@ -219,6 +219,7 @@ button {
 .icon-button,
 .primary-button,
 .secondary-button,
+.source-row,
 .nav-row {
   border: 1px solid var(--line);
   background: linear-gradient(180deg, #1a2020, #121717);
@@ -229,8 +230,7 @@ button {
 
 .tool-button:hover,
 .icon-button:hover,
-.secondary-button:hover,
-.nav-row:hover {
+.secondary-button:hover {
   border-color: rgba(16, 183, 164, 0.5);
   background: #1a2322;
 }
@@ -331,10 +331,22 @@ button {
   text-align: left;
 }
 
+.source-row:hover,
+.nav-row:hover {
+  border-color: rgba(16, 183, 164, 0.5);
+  background: #1a2322;
+}
+
 .source-row.active,
 .nav-row.active {
   border-color: rgba(16, 183, 164, 0.35);
   background: linear-gradient(90deg, rgba(16, 183, 164, 0.25), rgba(16, 183, 164, 0.06));
+}
+
+.source-row.active:hover,
+.nav-row.active:hover {
+  border-color: rgba(16, 183, 164, 0.58);
+  background: linear-gradient(90deg, rgba(16, 183, 164, 0.34), rgba(16, 183, 164, 0.1));
 }
 
 .source-name,
