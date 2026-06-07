@@ -69,6 +69,7 @@ jobs:
             --clean `
             --onefile `
             --windowed `
+            --icon "icon.ico" `
             --name "IPTV Multi Player" `
             --add-data "templates;templates" `
             --add-data "static;static" `
@@ -91,7 +92,7 @@ jobs:
             throw "Inno Setup compiler was not found at $iscc"
           }
           $version = "${{ steps.version.outputs.app_version }}"
-          & $iscc "/DMyAppVersion=`"$version`"" "installer\IPTVMultiPlayer.iss"
+          & $iscc "/DMyAppVersion=$version" "installer\IPTVMultiPlayer.iss"
 
       - name: Generate release notes
         shell: pwsh
