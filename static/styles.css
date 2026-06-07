@@ -635,6 +635,20 @@ button {
   color: var(--green);
 }
 
+.game-status.loading strong {
+  grid-template-columns: 10px minmax(0, 1fr);
+  color: var(--blue);
+}
+
+.game-status.loading strong::before {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(110, 167, 255, 0.25);
+  border-top-color: currentColor;
+  background: transparent;
+  animation: game-spinner 0.8s linear infinite;
+}
+
 .game-status.live strong::after {
   position: absolute;
   z-index: 999;
@@ -665,6 +679,12 @@ button {
 
 .game-status.stream strong {
   color: var(--muted);
+}
+
+@keyframes game-spinner {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes live-pulse {

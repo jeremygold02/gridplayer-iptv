@@ -10,6 +10,7 @@ const PLAYER_PATH_FIELDS = {
   vlc: "vlc_path",
 };
 const GAME_SORT_RANK = {
+  loading: 0,
   live: 0,
   scheduled: 1,
   inactive: 2,
@@ -35,6 +36,7 @@ let uiPrefs = {
 };
 let sidebarResize = null;
 let sportsRefreshTimer = null;
+let sportsRefreshInFlight = false;
 let apiKeyVisible = false;
 let launchUpdateChecked = false;
 let pendingUpdate = null;
@@ -121,25 +123,58 @@ function showToast(message, kind = "info") {
 
 async function loadState() {
   const data = await api("/api/state");
-  appState = data;
+  setAppState(data);
   filters.sourceId = filters.sourceId || data.selected_source_id || "all";
   hydrateUiPrefs();
   render();
   scheduleSportsRefresh();
   checkForLaunchUpdate();
+  refreshSportsData();
 }
 
 function scheduleSportsRefresh() {
   window.clearInterval(sportsRefreshTimer);
+  if (!appState?.sports?.configured) return;
   const seconds = Number(appState?.sports?.refresh_seconds) || 1800;
   sportsRefreshTimer = window.setInterval(async () => {
-    try {
-      appState = await api("/api/state");
-      render();
-    } catch (error) {
+    await refreshSportsData({ showErrors: true });
+  }, seconds * 1000);
+}
+
+function mergeGameState(nextState) {
+  if (!appState?.channels || !nextState?.channels) return nextState;
+  const currentGames = new Map(appState.channels.map((channel) => [channel.id, channel.game]));
+  return {
+    ...nextState,
+    channels: nextState.channels.map((channel) => {
+      const currentGame = currentGames.get(channel.id);
+      if (channel.game?.kind === "loading" && currentGame && currentGame.kind !== "loading") {
+        return { ...channel, game: currentGame };
+      }
+      return channel;
+    }),
+  };
+}
+
+function setAppState(nextState, options = {}) {
+  appState = options.preserveGames ? mergeGameState(nextState) : nextState;
+}
+
+async function refreshSportsData(options = {}) {
+  if (sportsRefreshInFlight || !appState?.sports?.configured) return;
+  sportsRefreshInFlight = true;
+  try {
+    const data = await api("/api/sports/refresh", { method: "POST" });
+    setAppState(data);
+    render();
+    scheduleSportsRefresh();
+  } catch (error) {
+    if (options.showErrors) {
       showToast(error.message, "error");
     }
-  }, seconds * 1000);
+  } finally {
+    sportsRefreshInFlight = false;
+  }
 }
 
 function desktopRuntime() {
@@ -203,7 +238,7 @@ async function persistUiPreference(key, value) {
       method: "POST",
       body: JSON.stringify({ [key]: value }),
     });
-    appState = data.state;
+    setAppState(data.state, { preserveGames: true });
     return;
   }
 
@@ -335,7 +370,7 @@ function gameStatusHtml(channel) {
   const game = gameInfo(channel);
   const subtext = game.score || game.subtext || game.start_time || "";
   return `
-    <div class="game-status ${escapeHtml(game.kind)}">
+    <div class="game-status ${escapeHtml(game.kind)}" ${game.kind === "loading" ? 'aria-busy="true"' : ""}>
       <strong><span class="game-status-label">${escapeHtml(game.text || "Unknown")}</span></strong>
       ${subtext ? `<small>${escapeHtml(subtext)}</small>` : ""}
     </div>
@@ -515,10 +550,14 @@ function renderDetail() {
   `;
 }
 
-async function refreshWithState(request) {
+async function refreshWithState(request, options = {}) {
   const data = await request;
-  appState = data.state || data;
+  setAppState(data.state || data, { preserveGames: true });
   render();
+  scheduleSportsRefresh();
+  if (options.refreshSports) {
+    refreshSportsData();
+  }
 }
 
 async function openChannel(channelId) {
@@ -680,7 +719,7 @@ function bindEvents() {
     const body = new FormData();
     body.append("file", file);
     try {
-      await refreshWithState(api("/api/import-file", { method: "POST", body }));
+      await refreshWithState(api("/api/import-file", { method: "POST", body }), { refreshSports: true });
       showToast(`Imported ${file.name}`);
     } catch (error) {
       showToast(error.message, "error");
@@ -698,7 +737,7 @@ function bindEvents() {
           name: els.urlNameInput.value,
           url: els.urlInput.value,
         }),
-      }));
+      }), { refreshSports: true });
       closeModals();
       els.urlForm.reset();
       showToast("Playlist URL imported");
@@ -718,7 +757,7 @@ function bindEvents() {
           vlc_path: els.vlcPathInput.value,
           api_sports_key: els.apiSportsKeyInput.value,
         }),
-      }));
+      }), { refreshSports: true });
       closeModals();
       showToast("Settings saved");
     } catch (error) {
@@ -729,8 +768,10 @@ function bindEvents() {
   els.refreshButton.addEventListener("click", async () => {
     try {
       const data = await api("/api/refresh", { method: "POST" });
-      appState = data.state;
+      setAppState(data.state, { preserveGames: true });
       render();
+      scheduleSportsRefresh();
+      refreshSportsData();
       const failed = data.errors?.length || 0;
       showToast(failed ? `Refresh finished with ${failed} issue${failed === 1 ? "" : "s"}` : "Playlists refreshed");
     } catch (error) {

@@ -312,12 +312,7 @@ def fetch_sports_events(sport: str, date_value: str, key: str) -> list[dict[str,
 
 
 def ensure_sports_cache_for(channels: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
-    requested_sports = {
-        sport
-        for channel in channels
-        for sport in [SPORT_BY_GROUP.get(channel.get("group", ""))]
-        if sport
-    }
+    requested_sports = requested_sports_for_channels(channels)
     requested_espn_sports = {sport for sport in requested_sports if sport in ESPN_CONFIG}
     cache = read_sports_cache()
     key = api_sports_key()
@@ -663,6 +658,106 @@ def stream_game_metadata() -> dict[str, Any]:
         "confidence": 0,
         "matched": False,
     }
+
+
+def loading_game_metadata(channel: dict[str, Any]) -> dict[str, Any]:
+    sport = SPORT_BY_GROUP.get(channel.get("group", ""))
+    return {
+        "kind": "loading",
+        "sport": sport,
+        "text": "Loading",
+        "subtext": "Fetching game data",
+        "start_time": "",
+        "status_short": "",
+        "status_long": "Fetching game data",
+        "score": "",
+        "start_timestamp": 0,
+        "home": "",
+        "away": "",
+        "event_id": None,
+        "confidence": 0,
+        "matched": False,
+        "loading": True,
+    }
+
+
+def requested_sports_for_channels(channels: list[dict[str, Any]]) -> set[str]:
+    return {
+        sport
+        for channel in channels
+        for sport in [SPORT_BY_GROUP.get(channel.get("group", ""))]
+        if sport
+    }
+
+
+def sports_refresh_seconds(requested_sports: set[str]) -> int:
+    return ESPN_REFRESH_SECONDS if any(sport in ESPN_CONFIG for sport in requested_sports) else SPORTS_REFRESH_SECONDS
+
+
+def pending_sports_meta(channels: list[dict[str, Any]]) -> dict[str, Any]:
+    requested_sports = requested_sports_for_channels(channels)
+    requested_espn_sports = {sport for sport in requested_sports if sport in ESPN_CONFIG}
+    key = api_sports_key()
+    refresh_seconds = sports_refresh_seconds(requested_sports)
+    query_dates = sports_query_dates()
+    can_refresh = bool(key) or bool(requested_espn_sports)
+    return {
+        "configured": can_refresh,
+        "api_sports_configured": bool(key),
+        "espn_configured": True,
+        "refresh_seconds": refresh_seconds,
+        "espn_refresh_seconds": ESPN_REFRESH_SECONDS,
+        "api_sports_refresh_seconds": SPORTS_REFRESH_SECONDS,
+        "daily_call_limit": SPORTS_DAILY_CALL_LIMIT,
+        "loading": can_refresh,
+        "sports": {
+            sport: {
+                "calls_used": 0,
+                "dates": query_dates,
+                "last_fetch": 0,
+                "event_count": 0,
+                "error": "",
+                "stale": True,
+                "loading": bool(key) or sport in ESPN_CONFIG,
+                "providers": {
+                    "espn": {
+                        "configured": sport in ESPN_CONFIG,
+                        "refresh_seconds": ESPN_REFRESH_SECONDS,
+                        "last_fetch": 0,
+                        "event_count": 0,
+                        "error": "",
+                        "stale": True,
+                    },
+                    "api_sports": {
+                        "configured": bool(key),
+                        "refresh_seconds": SPORTS_REFRESH_SECONDS,
+                        "calls_used": 0,
+                        "last_fetch": 0,
+                        "event_count": 0,
+                        "error": "",
+                        "stale": True,
+                    },
+                },
+            }
+            for sport in sorted(requested_sports)
+        },
+    }
+
+
+def channels_with_pending_games(channels: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    pending_channels = []
+    key_configured = bool(api_sports_key())
+    for channel in channels:
+        next_channel = dict(channel)
+        sport = SPORT_BY_GROUP.get(channel.get("group", ""))
+        if not sport:
+            next_channel["game"] = stream_game_metadata()
+        elif key_configured or sport in ESPN_CONFIG:
+            next_channel["game"] = loading_game_metadata(channel)
+        else:
+            next_channel["game"] = unmatched_game_metadata(channel, "API key not configured")
+        pending_channels.append(next_channel)
+    return pending_channels, pending_sports_meta(channels)
 
 
 def status_code(event: dict[str, Any], sport: str) -> str:

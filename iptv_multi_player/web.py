@@ -16,7 +16,7 @@ from .playlists import (
     upsert_file_source,
     upsert_url_source,
 )
-from .sports import enrich_channels_with_games
+from .sports import channels_with_pending_games, enrich_channels_with_games
 from .state import api_sports_key, default_state, read_state, write_env_value, write_state
 from .updates import UpdateError, can_install_updates, check_for_update, install_update
 from .version import APP_NAME, APP_VERSION, GITHUB_REPO_URL
@@ -29,14 +29,18 @@ app = Flask(
 state_lock = threading.RLock()
 
 
-def public_state() -> dict[str, Any]:
-    state = read_state()
+def public_state(state: dict[str, Any] | None = None, enrich_games: bool = False) -> dict[str, Any]:
+    state = state or read_state()
     settings = state.get("settings", {})
     sports_key = api_sports_key()
     players = public_players(settings)
     gridplayer = next((player for player in players["items"] if player["id"] == "gridplayer"), None)
     categories = sorted({channel.get("group") or "Ungrouped" for channel in state["channels"].values()})
-    channels, sports_meta = enrich_channels_with_games(list(state["channels"].values()))
+    channel_values = list(state["channels"].values())
+    if enrich_games:
+        channels, sports_meta = enrich_channels_with_games(channel_values)
+    else:
+        channels, sports_meta = channels_with_pending_games(channel_values)
     return {
         "sources": state["sources"],
         "channels": channels,
@@ -80,6 +84,16 @@ def index():
 def api_state():
     with state_lock:
         return jsonify({"success": True, "data": public_state()})
+
+
+@app.post("/api/sports/refresh")
+def api_sports_refresh():
+    try:
+        with state_lock:
+            state = read_state()
+        return jsonify({"success": True, "data": public_state(state=state, enrich_games=True)})
+    except Exception as exc:  # noqa: BLE001 - game enrichment should not crash the app shell
+        return json_error(f"Could not refresh game data: {exc}", 502)
 
 
 @app.get("/api/update/check")
