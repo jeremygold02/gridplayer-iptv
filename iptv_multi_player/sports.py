@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from difflib import SequenceMatcher
 import json
+import re
 import unicodedata
 import urllib.request
 from urllib.parse import urlencode
@@ -55,6 +56,14 @@ def parse_channel_matchup(channel: dict[str, Any]) -> dict[str, str] | None:
 
     name = str(channel.get("name", "")).strip()
     title = re.sub(r"\s*\([^()]*\)\s*$", "", name).strip()
+    if SPORTS_CONFIG[sport].get("event_kind") == "race":
+        return {
+            "sport": sport,
+            "home": "",
+            "away": "",
+            "title": title,
+        }
+
     if sport == "mma":
         match = MATCHUP_RE.search(title)
         return {
@@ -74,6 +83,22 @@ def parse_channel_matchup(channel: dict[str, Any]) -> dict[str, str] | None:
         "away": match.group(2).strip(),
         "title": title,
     }
+
+
+def parse_event_timestamp(value: Any) -> int:
+    if value in (None, ""):
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        pass
+
+    if isinstance(value, str):
+        try:
+            return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
+        except ValueError:
+            return 0
+    return 0
 
 
 def sports_calls_today(sport_cache: dict[str, Any]) -> int:
@@ -183,6 +208,9 @@ def ensure_sports_cache_for(channels: list[dict[str, Any]]) -> tuple[dict[str, A
 
 
 def event_team_names(event: dict[str, Any]) -> tuple[str, str]:
+    if event.get("_sport") == "formula_1":
+        return event_title(event, "formula_1"), ""
+
     if event.get("_sport") == "mma" or "fighters" in event:
         fighters = event.get("fighters") or {}
         first = fighters.get("first") or {}
@@ -191,8 +219,22 @@ def event_team_names(event: dict[str, Any]) -> tuple[str, str]:
 
     teams = event.get("teams") or {}
     home = teams.get("home") or {}
-    away = teams.get("away") or {}
+    away = teams.get("away") or teams.get("visitors") or {}
     return str(home.get("name") or ""), str(away.get("name") or "")
+
+
+def event_title(event: dict[str, Any], sport: str) -> str:
+    if sport == "formula_1":
+        competition = event.get("competition") or {}
+        race_type = str(event.get("type") or "").strip()
+        name = str(competition.get("name") or event.get("name") or "").strip()
+        if name and race_type and race_type.lower() not in name.lower():
+            return f"{name} {race_type}"
+        return name or race_type or "Formula 1"
+    if sport == "mma":
+        return str(event.get("slug") or "").strip()
+    home, away = event_team_names(event)
+    return f"{home} vs {away}".strip()
 
 
 def event_status(event: dict[str, Any], sport: str) -> dict[str, Any]:
@@ -202,15 +244,21 @@ def event_status(event: dict[str, Any], sport: str) -> dict[str, Any]:
         status = event.get("status") or {}
     else:
         status = event.get("status") or {}
-    return status if isinstance(status, dict) else {}
+    if isinstance(status, dict):
+        return status
+    if status in (None, ""):
+        return {}
+    return {"short": str(status), "long": str(status)}
 
 
 def event_timestamp(event: dict[str, Any], sport: str) -> Any:
     if sport == "football":
-        return (event.get("fixture") or {}).get("timestamp")
+        return parse_event_timestamp((event.get("fixture") or {}).get("timestamp"))
     if sport == "mma":
-        return event.get("timestamp")
-    return event.get("timestamp")
+        return parse_event_timestamp(event.get("timestamp") or event.get("date"))
+    if sport == "nba":
+        return parse_event_timestamp((event.get("date") or {}).get("start"))
+    return parse_event_timestamp(event.get("timestamp") or event.get("date"))
 
 
 def event_id(event: dict[str, Any], sport: str) -> Any:
@@ -222,7 +270,7 @@ def event_id(event: dict[str, Any], sport: str) -> Any:
 
 
 def event_score(event: dict[str, Any], sport: str) -> str:
-    if sport == "mma":
+    if sport in {"formula_1", "mma"}:
         return ""
 
     if sport == "football":
@@ -231,37 +279,50 @@ def event_score(event: dict[str, Any], sport: str) -> str:
         away = goals.get("away")
     else:
         scores = event.get("scores") or {}
-        home_score = scores.get("home") or {}
-        away_score = scores.get("away") or {}
-        home = home_score.get("total") if isinstance(home_score, dict) else None
-        away = away_score.get("total") if isinstance(away_score, dict) else None
+        home = score_value(scores.get("home"))
+        away = score_value(scores.get("away") if "away" in scores else scores.get("visitors"))
 
     if home is None or away is None:
         return ""
     return f"{home}-{away}"
 
 
+def score_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        for key in ("total", "points", "score", "goals"):
+            if value.get(key) is not None:
+                return value.get(key)
+        linescore = value.get("linescore")
+        if isinstance(linescore, list):
+            try:
+                return sum(int(item) for item in linescore if str(item).strip())
+            except (TypeError, ValueError):
+                return None
+        return None
+    return value
+
+
 def game_metadata(event: dict[str, Any], sport: str, confidence: float) -> dict[str, Any]:
     config = SPORTS_CONFIG[sport]
     status = event_status(event, sport)
     code = str(status.get("short") or "").upper()
-    status_long = str(status.get("long") or code or "Unknown")
+    status_long = str(status.get("long") or config.get("status_labels", {}).get(code) or code or "Unknown")
     elapsed = status.get("elapsed")
     timer = status.get("timer")
+    clock = status.get("clock")
     score = event_score(event, sport)
     raw_timestamp = event_timestamp(event, sport)
-    start_time = local_time_text(raw_timestamp)
+    start_time = local_time_text(raw_timestamp) if raw_timestamp else ""
     home, away = event_team_names(event)
-    try:
-        start_timestamp = int(raw_timestamp or 0)
-    except (TypeError, ValueError):
-        start_timestamp = 0
+    start_timestamp = parse_event_timestamp(raw_timestamp) if raw_timestamp else 0
 
     if code in config["live_codes"]:
         if sport == "mma":
             text = "Live" if code == "LIVE" else status_long
+        elif sport == "formula_1":
+            text = status_long
         else:
-            detail = str(timer or elapsed or code)
+            detail = str(clock or timer or elapsed or code)
             suffix = f" {detail}'" if sport == "football" and str(detail).isdigit() else f" {detail}" if detail else ""
             text = f"Live{suffix}"
         kind = "live"
@@ -278,15 +339,17 @@ def game_metadata(event: dict[str, Any], sport: str, confidence: float) -> dict[
         text = status_long or "Unknown"
         kind = "unknown"
 
+    display_score = "" if kind == "scheduled" and score in {"0-0", "0.0-0.0"} else score
+
     return {
         "kind": kind,
         "sport": sport,
         "text": text,
-        "subtext": score or status_long,
+        "subtext": display_score or status_long,
         "start_time": start_time,
         "status_short": code,
         "status_long": status_long,
-        "score": score,
+        "score": display_score,
         "start_timestamp": start_timestamp,
         "home": home,
         "away": away,
@@ -362,6 +425,22 @@ def select_mma_card_event(events: list[dict[str, Any]]) -> dict[str, Any]:
     return next_event
 
 
+def best_title_event_match(matchup: dict[str, str], events: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, float]:
+    best_event = None
+    best_score = 0.0
+    for event in events:
+        sport = matchup["sport"]
+        title = event_title(event, sport)
+        score = team_match_score(matchup.get("title", ""), title)
+        if score > best_score:
+            best_event = event
+            best_score = score
+
+    if best_score < 0.55:
+        return None, best_score
+    return best_event, best_score
+
+
 def best_mma_event_match(matchup: dict[str, str], events: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, float]:
     candidates: dict[str, dict[str, Any]] = {}
     for event in events:
@@ -396,6 +475,8 @@ def best_mma_event_match(matchup: dict[str, str], events: list[dict[str, Any]]) 
 def best_event_match(matchup: dict[str, str], events: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, float]:
     if matchup.get("sport") == "mma":
         return best_mma_event_match(matchup, events)
+    if SPORTS_CONFIG[matchup["sport"]].get("event_kind") == "race":
+        return best_title_event_match(matchup, events)
 
     best_event = None
     best_score = 0.0
