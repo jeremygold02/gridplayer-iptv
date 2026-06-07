@@ -52,13 +52,13 @@ button {
 
 .material-icons {
   display: inline-grid;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   place-items: center;
   overflow: hidden;
   font-family: "Material Symbols Rounded";
   font-feature-settings: "liga";
-  font-size: 20px;
+  font-size: 18px;
   font-style: normal;
   font-weight: normal;
   letter-spacing: normal;
@@ -162,9 +162,9 @@ button {
 }
 
 .zoom-control .material-icons {
-  width: 20px;
-  height: 20px;
-  font-size: 20px;
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
 }
 
 .zoom-control .icon-button:disabled {
@@ -248,9 +248,9 @@ button {
 .tool-button .material-icons,
 .primary-button .material-icons,
 .secondary-button .material-icons {
-  width: 20px;
-  height: 20px;
-  font-size: 20px;
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
 }
 
 .workspace {
@@ -319,8 +319,9 @@ button {
 .source-row,
 .nav-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
   align-items: center;
+  column-gap: 8px;
   width: 100%;
   min-height: 36px;
   padding: 5px 7px;
@@ -360,18 +361,23 @@ button {
 
 .nav-icon {
   display: grid;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
+  justify-self: start;
   place-items: center;
   color: var(--teal);
   font-size: 13px;
 }
 
 .nav-icon.material-icons {
-  width: 20px;
-  height: 20px;
-  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
   font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 20;
+}
+
+.favorite-nav-icon {
+  color: var(--red);
 }
 
 .channel-panel {
@@ -697,17 +703,17 @@ button {
 }
 
 .icon-button .material-icons {
-  width: 20px;
-  height: 20px;
-  font-size: 20px;
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
 }
 
-.icon-button.active {
-  border-color: rgba(240, 184, 75, 0.5);
-  color: var(--amber);
+.favorite-button.active {
+  border-color: rgba(255, 90, 95, 0.55);
+  color: var(--red);
 }
 
-.icon-button.active .material-icons {
+.favorite-button.active .material-icons {
   font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 20;
 }
 

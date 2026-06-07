@@ -455,27 +455,30 @@ function renderChannels() {
     return;
   }
 
-  els.channelList.innerHTML = channels.map((channel) => `
-    <div class="channel-row ${selectedChannelId === channel.id ? "selected" : ""}" data-channel-id="${channel.id}">
-      <div class="channel-main">
-        ${logoHtml(channel)}
-        <div class="channel-text">
-          <div class="channel-name">${escapeHtml(channel.name)}</div>
-          <div class="channel-subtitle">${escapeHtml(sourceName(channel.source_id))}</div>
+  els.channelList.innerHTML = channels.map((channel) => {
+    const isFavorite = favorites.has(channel.id);
+    return `
+      <div class="channel-row ${selectedChannelId === channel.id ? "selected" : ""}" data-channel-id="${channel.id}">
+        <div class="channel-main">
+          ${logoHtml(channel)}
+          <div class="channel-text">
+            <div class="channel-name">${escapeHtml(channel.name)}</div>
+            <div class="channel-subtitle">${escapeHtml(sourceName(channel.source_id))}</div>
+          </div>
+        </div>
+        <div class="group-pill">${escapeHtml(channel.group)}</div>
+        ${gameStatusHtml(channel)}
+        <div class="row-actions">
+          <button class="icon-button favorite-button ${isFavorite ? "active" : ""}" data-action="favorite" title="${isFavorite ? "Remove favorite" : "Favorite"}" type="button">
+            ${iconHtml(isFavorite ? "favorite" : "favorite_border")}
+          </button>
+          <button class="icon-button" data-action="open" title="Open in ${escapeHtml(playerLabel)}" type="button">
+            ${iconHtml("open_in_new")}
+          </button>
         </div>
       </div>
-      <div class="group-pill">${escapeHtml(channel.group)}</div>
-      ${gameStatusHtml(channel)}
-      <div class="row-actions">
-        <button class="icon-button ${favorites.has(channel.id) ? "active" : ""}" data-action="favorite" title="Favorite" type="button">
-          ${iconHtml(favorites.has(channel.id) ? "star" : "star_border")}
-        </button>
-        <button class="icon-button" data-action="open" title="Open in ${escapeHtml(playerLabel)}" type="button">
-          ${iconHtml("open_in_new")}
-        </button>
-      </div>
-    </div>
-  `).join("");
+    `;
+  }).join("");
 }
 
 function renderDetail() {
