@@ -9,6 +9,7 @@ A local Flask + pywebview IPTV client for importing M3U playlists and opening in
 - Choose GridPlayer, MPV, or VLC from the header before opening a stream.
 - Configure external player executable paths in Settings.
 - Enrich sports-style channel titles with ESPN game status, with optional API-Sports fallback.
+- Check GitHub releases for updates from the About dialog.
 
 ## Run From Source
 
@@ -43,3 +44,9 @@ The key is not committed. Imported playlists, cached API responses, favorites, s
 - `templates/` contains the HTML shell.
 - `static/` contains frontend JavaScript and CSS.
 - `requirements.txt` lists Python runtime dependencies.
+
+## Releases and Updates
+
+Pushes to `main` build a Windows exe in GitHub Actions and publish it as a GitHub Release asset. Release versions start at `v0.1.0` and increment the patch version for each release build.
+
+Packaged Windows builds check the latest GitHub release on launch. When a newer release exists, the app can download the new exe, start a temporary updater helper, exit, replace itself, and restart.

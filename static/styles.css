@@ -25,6 +25,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   min-width: 1050px;
@@ -894,11 +898,13 @@ button {
   gap: 10px;
 }
 
-.about-modal {
+.about-modal,
+.update-modal {
   width: min(500px, calc(100vw - 40px));
 }
 
-.about-body {
+.about-body,
+.update-body {
   display: grid;
   gap: 12px;
   padding: 6px 0 4px;
@@ -919,6 +925,30 @@ button {
 }
 
 .about-body a:hover {
+  text-decoration: underline;
+}
+
+.version-pair {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.version-pair strong {
+  color: var(--text);
+}
+
+.update-body a {
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--teal);
+  text-decoration: none;
+}
+
+.update-body a:hover {
   text-decoration: underline;
 }
 

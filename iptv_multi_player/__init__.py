@@ -1,5 +1,5 @@
 """IPTV Multi Player application package."""
 
-APP_NAME = "IPTV Multi Player"
-APP_VERSION = "0.1.0"
-GITHUB_REPO_URL = "https://github.com/jeremygold02/iptv-multi-player"
+from .version import APP_NAME, APP_VERSION, GITHUB_REPO_URL
+
+__all__ = ["APP_NAME", "APP_VERSION", "GITHUB_REPO_URL"]

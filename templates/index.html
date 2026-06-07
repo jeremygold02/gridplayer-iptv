@@ -195,7 +195,41 @@
             <span class="material-icons" aria-hidden="true">system_update_alt</span>
             <span>Check for Updates</span>
           </button>
+          <button class="primary-button" id="aboutInstallUpdateButton" type="button" hidden>
+            <span class="material-icons" aria-hidden="true">download</span>
+            <span>Update and Restart</span>
+          </button>
           <button class="primary-button" data-close-modal type="button">Done</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="updateModal" hidden>
+      <section class="modal update-modal" role="dialog" aria-modal="true" aria-labelledby="updateTitle">
+        <div class="modal-head">
+          <h2 id="updateTitle">Update Available</h2>
+          <button class="icon-button" data-close-modal type="button" title="Close">
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <div class="update-body">
+          <div class="version-pair">
+            <span>Current</span>
+            <strong id="updateCurrentVersion">v0.1.0</strong>
+          </div>
+          <div class="version-pair">
+            <span>Latest</span>
+            <strong id="updateLatestVersion">v0.1.0</strong>
+          </div>
+          <a id="updateReleaseLink" href="https://github.com/jeremygold02/iptv-multi-player/releases/latest" target="_blank" rel="noopener noreferrer">View release</a>
+          <div class="update-status" id="updateInstallStatus" role="status" aria-live="polite"></div>
+        </div>
+        <div class="modal-actions">
+          <button class="secondary-button" data-close-modal type="button">Later</button>
+          <button class="primary-button" id="updateInstallButton" type="button">
+            <span class="material-icons" aria-hidden="true">download</span>
+            <span>Update and Restart</span>
+          </button>
         </div>
       </section>
     </div>

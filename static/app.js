@@ -36,6 +36,8 @@ let uiPrefs = {
 let sidebarResize = null;
 let sportsRefreshTimer = null;
 let apiKeyVisible = false;
+let launchUpdateChecked = false;
+let pendingUpdate = null;
 let lastChannelClick = {
   id: null,
   time: 0,
@@ -124,6 +126,7 @@ async function loadState() {
   hydrateUiPrefs();
   render();
   scheduleSportsRefresh();
+  checkForLaunchUpdate();
 }
 
 function scheduleSportsRefresh() {
@@ -538,6 +541,69 @@ function fillAboutDialog() {
   els.aboutRepoLink.textContent = meta.repoUrl;
   els.updateStatus.textContent = "";
   els.checkUpdatesButton.disabled = false;
+  els.aboutInstallUpdateButton.hidden = true;
+  els.aboutInstallUpdateButton.disabled = false;
+}
+
+function updateUrl(update) {
+  return update?.release_url || update?.repo_url || appMeta().repoUrl;
+}
+
+function renderAboutUpdateResult(update) {
+  pendingUpdate = update;
+  els.updateStatus.className = `update-status ${update.update_available ? "available" : ""}`;
+  els.updateStatus.innerHTML = update.update_available
+    ? `${escapeHtml(update.message)} <a href="${escapeHtml(updateUrl(update))}" target="_blank" rel="noopener noreferrer">View release</a>`
+    : escapeHtml(update.message);
+  els.aboutInstallUpdateButton.hidden = !(update.update_available && update.can_install);
+}
+
+function fillUpdateDialog(update) {
+  pendingUpdate = update;
+  els.updateCurrentVersion.textContent = update.current_version || appMeta().version;
+  els.updateLatestVersion.textContent = update.latest_version || "Unknown";
+  els.updateReleaseLink.href = updateUrl(update);
+  els.updateInstallStatus.className = "update-status";
+  els.updateInstallStatus.textContent = update.can_install
+    ? ""
+    : "This update can be downloaded from GitHub, but automatic install only works in the packaged Windows app.";
+  els.updateInstallButton.disabled = !update.can_install;
+}
+
+function showUpdateDialog(update) {
+  fillUpdateDialog(update);
+  closeModals();
+  openModal(els.updateModal);
+}
+
+async function checkForLaunchUpdate() {
+  if (launchUpdateChecked) return;
+  launchUpdateChecked = true;
+  try {
+    const update = await api("/api/update/check");
+    if (update.update_available && update.can_install) {
+      showUpdateDialog(update);
+    }
+  } catch {
+    // Launch checks should not interrupt normal app startup.
+  }
+}
+
+async function installPendingUpdate() {
+  if (!pendingUpdate) return;
+  els.updateInstallButton.disabled = true;
+  els.aboutInstallUpdateButton.disabled = true;
+  els.updateInstallStatus.className = "update-status";
+  els.updateInstallStatus.textContent = "Downloading update...";
+  try {
+    const result = await api("/api/update/install", { method: "POST" });
+    els.updateInstallStatus.textContent = result.message || "Update downloaded. Restarting...";
+  } catch (error) {
+    els.updateInstallStatus.className = "update-status error";
+    els.updateInstallStatus.textContent = error.message;
+    els.updateInstallButton.disabled = false;
+    els.aboutInstallUpdateButton.disabled = false;
+  }
 }
 
 function setApiKeyVisibility(visible) {
@@ -562,6 +628,7 @@ function closeModals() {
   els.urlModal.hidden = true;
   els.settingsModal.hidden = true;
   els.aboutModal.hidden = true;
+  els.updateModal.hidden = true;
 }
 
 function bindEvents() {
@@ -578,6 +645,12 @@ function bindEvents() {
     openModal(els.aboutModal);
   });
 
+  els.aboutInstallUpdateButton.addEventListener("click", () => {
+    if (pendingUpdate) {
+      showUpdateDialog(pendingUpdate);
+    }
+  });
+
   document.querySelectorAll("[data-close-modal]").forEach((button) => {
     button.addEventListener("click", closeModals);
   });
@@ -587,11 +660,7 @@ function bindEvents() {
     els.updateStatus.className = "update-status";
     els.updateStatus.textContent = "Checking for updates...";
     try {
-      const result = await api("/api/update-check");
-      els.updateStatus.className = `update-status ${result.update_available ? "available" : ""}`;
-      els.updateStatus.innerHTML = result.update_available
-        ? `${escapeHtml(result.message)} <a href="${escapeHtml(result.repo_url)}" target="_blank" rel="noopener noreferrer">Open update</a>`
-        : escapeHtml(result.message);
+      renderAboutUpdateResult(await api("/api/update/check"));
     } catch (error) {
       els.updateStatus.className = "update-status error";
       els.updateStatus.textContent = error.message;
@@ -599,6 +668,8 @@ function bindEvents() {
       els.checkUpdatesButton.disabled = false;
     }
   });
+
+  els.updateInstallButton.addEventListener("click", installPendingUpdate);
 
   els.fileInput.addEventListener("change", async () => {
     const file = els.fileInput.files[0];
@@ -791,7 +862,9 @@ function initEls() {
     "urlForm", "urlNameInput", "urlInput", "settingsModal", "settingsForm",
     "gridplayerPathInput", "mpvPathInput", "vlcPathInput", "apiSportsKeyInput",
     "toggleApiKeyButton", "aboutButton", "aboutModal", "aboutVersion", "aboutRepoLink",
-    "checkUpdatesButton", "updateStatus", "toast",
+    "checkUpdatesButton", "aboutInstallUpdateButton", "updateStatus", "updateModal",
+    "updateCurrentVersion", "updateLatestVersion", "updateReleaseLink", "updateInstallStatus",
+    "updateInstallButton", "toast",
   ].forEach((id) => {
     els[id] = $(id);
   });

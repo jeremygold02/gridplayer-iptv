@@ -1,0 +1,79 @@
+name: Build Windows Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Determine next patch version
+        id: version
+        shell: pwsh
+        run: |
+          $tags = @(git tag --list "v0.1.*" --sort=-v:refname)
+          if ($tags.Count -eq 0) {
+            $next = "v0.1.0"
+          } else {
+            $latest = [string]$tags[0]
+            if ($latest -notmatch '^v0\.1\.(\d+)$') {
+              throw "Latest matching tag '$latest' is not a v0.1.x patch tag."
+            }
+            $patch = [int]$Matches[1] + 1
+            $next = "v0.1.$patch"
+          }
+          $appVersion = $next.TrimStart("v")
+          "version=$next" >> $env:GITHUB_OUTPUT
+          "app_version=$appVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Bake release version
+        shell: pwsh
+        run: |
+          Set-Content -Path "iptv_multi_player\_version_build.py" -Value "APP_VERSION = `"${{ steps.version.outputs.app_version }}`"" -Encoding UTF8
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build executable
+        run: |
+          python -m PyInstaller `
+            --noconfirm `
+            --clean `
+            --onefile `
+            --windowed `
+            --name "IPTV Multi Player" `
+            --add-data "templates;templates" `
+            --add-data "static;static" `
+            --collect-submodules webview `
+            --collect-data webview `
+            --collect-submodules clr_loader `
+            --collect-submodules pythonnet `
+            app.py
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.version }}" "dist\IPTV Multi Player.exe" `
+            --title "IPTV Multi Player ${{ steps.version.outputs.version }}" `
+            --notes "Automated Windows build for IPTV Multi Player ${{ steps.version.outputs.version }}." `
+            --latest
