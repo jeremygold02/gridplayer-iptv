@@ -71,8 +71,13 @@
             <div class="section-title">Playlists</div>
             <div id="sourceList" class="source-list"></div>
           </section>
-          <section>
-            <div class="section-title">Filters</div>
+          <section id="filtersSection">
+            <div class="section-title section-title-with-action">
+              <span>Filters</span>
+              <button class="section-action-button" id="addFilterButton" type="button" title="Add filter" aria-label="Add filter">
+                <span class="material-icons" aria-hidden="true">add</span>
+              </button>
+            </div>
             <button class="nav-row active" data-filter-kind="all" type="button">
               <span class="material-icons nav-icon" aria-hidden="true">tag</span>
               <span>All Channels</span>
@@ -83,11 +88,17 @@
               <span>Favorites</span>
               <span id="favoriteCount" class="count">0</span>
             </button>
+            <button class="nav-row" data-filter-kind="nba" type="button">
+              <span class="material-icons nav-icon" aria-hidden="true">sports_basketball</span>
+              <span>NBA</span>
+              <span id="nbaCount" class="count">0</span>
+            </button>
             <button class="nav-row" id="liveGamesFilter" data-filter-kind="live-games" type="button" hidden>
               <span class="material-icons nav-icon" aria-hidden="true">sports_score</span>
               <span>Live Games</span>
               <span id="liveGameCount" class="count">0</span>
             </button>
+            <div id="customFilterList" class="custom-filter-list"></div>
           </section>
           <section>
             <div class="section-title">Categories</div>
@@ -124,6 +135,37 @@
     </div>
 
     <input id="fileInput" type="file" accept=".m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain" hidden>
+
+    <div class="modal-backdrop" id="customFilterModal" hidden>
+      <form class="modal custom-filter-modal" id="customFilterForm" role="dialog" aria-modal="true" aria-labelledby="customFilterTitle">
+        <div class="modal-head">
+          <h2 id="customFilterTitle">Add Filter</h2>
+          <button class="icon-button" data-close-modal type="button" title="Close">
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <label>
+          <span>Name</span>
+          <input id="customFilterNameInput" type="text" placeholder="NBA">
+        </label>
+        <label>
+          <span>Category</span>
+          <select id="customFilterCategorySelect"></select>
+        </label>
+        <label>
+          <span>Channel contains</span>
+          <textarea id="customFilterTermsInput" rows="5" placeholder="Lakers, Knicks, Celtics"></textarea>
+        </label>
+        <label>
+          <span>Preset</span>
+          <select id="customFilterPresetSelect"></select>
+        </label>
+        <div class="modal-actions">
+          <button class="secondary-button" data-close-modal type="button">Cancel</button>
+          <button class="primary-button" type="submit">Save Filter</button>
+        </div>
+      </form>
+    </div>
 
     <div class="modal-backdrop" id="urlModal" hidden>
       <form class="modal" id="urlForm">

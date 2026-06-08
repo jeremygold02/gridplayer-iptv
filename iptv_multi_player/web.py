@@ -420,6 +420,7 @@ def api_settings():
         "ui_zoom",
         "ui_sidebar_width",
         "pinned_categories",
+        "custom_filters",
     }
     with state_lock:
         state = read_state()
@@ -442,6 +443,38 @@ def api_settings():
                             pinned_categories.append(category_name)
                             seen_categories.add(category_name)
                     settings[key] = pinned_categories
+                elif key == "custom_filters":
+                    filters = payload.get(key) if isinstance(payload.get(key), list) else []
+                    custom_filters = []
+                    seen_filter_ids = set()
+                    for item in filters:
+                        if not isinstance(item, dict):
+                            continue
+                        filter_id = "".join(
+                            char
+                            for char in str(item.get("id", "")).strip()
+                            if char.isalnum() or char in {"-", "_"}
+                        )
+                        name = str(item.get("name", "")).strip()
+                        category = str(item.get("category", "all")).strip() or "all"
+                        terms = []
+                        seen_terms = set()
+                        raw_terms = item.get("terms") if isinstance(item.get("terms"), list) else []
+                        for term in raw_terms:
+                            value = str(term).strip()
+                            normalized = value.lower()
+                            if value and normalized not in seen_terms:
+                                terms.append(value)
+                                seen_terms.add(normalized)
+                        if filter_id and name and terms and filter_id not in seen_filter_ids:
+                            custom_filters.append({
+                                "id": filter_id,
+                                "name": name,
+                                "category": category,
+                                "terms": terms,
+                            })
+                            seen_filter_ids.add(filter_id)
+                    settings[key] = custom_filters
                 else:
                     settings[key] = payload[key]
         write_state(state)

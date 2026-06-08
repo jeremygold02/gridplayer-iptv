@@ -23,6 +23,10 @@ const GAME_SORT_RANK = {
   unknown: 4,
   stream: 5,
 };
+let customFilterPresets = {};
+const BUILT_IN_FILTER_PRESET_IDS = {
+  nba: "nba",
+};
 const API_REQUEST_POLICIES = {
   "GET /api/update/check": "share",
   "GET /api/update-check": "share",
@@ -197,6 +201,45 @@ async function performApiRequest(path, options = {}, headers = undefined) {
     throw new Error(payload.error || "Request failed");
   }
   return payload.data;
+}
+
+function sanitizeFilterPreset(item) {
+  if (!item || typeof item !== "object") return null;
+  const id = String(item.id || "").trim();
+  const name = String(item.name || "").trim();
+  const sport = String(item.sport || "").trim();
+  const category = String(item.category || "all").trim() || "all";
+  const terms = Array.isArray(item.terms)
+    ? item.terms.map((term) => String(term).trim()).filter(Boolean)
+    : [];
+  if (!id || !name || !terms.length) return null;
+  return { id, name, sport, category, terms };
+}
+
+async function loadCustomFilterPresets() {
+  const response = await fetch("/static/filter_presets.json");
+  if (!response.ok) {
+    throw new Error(`Filter presets returned ${response.status}`);
+  }
+  const payload = await response.json();
+  if (!Array.isArray(payload)) {
+    throw new Error("Filter presets must be a list");
+  }
+  customFilterPresets = Object.fromEntries(
+    payload
+      .map(sanitizeFilterPreset)
+      .filter(Boolean)
+      .map((preset) => [preset.id, preset]),
+  );
+}
+
+function presetById(presetId) {
+  return customFilterPresets[presetId] || null;
+}
+
+function builtInFilterPreset(kind) {
+  const presetId = BUILT_IN_FILTER_PRESET_IDS[kind];
+  return presetId ? presetById(presetId) : null;
 }
 
 function showToast(message, kind = "info") {
@@ -435,6 +478,52 @@ function isLiveGameChannel(channel) {
   return shouldShowGameInfo(game) && game.kind === "live";
 }
 
+function normalizedFilterText(value) {
+  return ` ${String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()} `;
+}
+
+function customFilterKind(filterId) {
+  return `custom:${filterId}`;
+}
+
+function customFilters() {
+  return Array.isArray(appState?.settings?.custom_filters) ? appState.settings.custom_filters : [];
+}
+
+function customFilterFromKind(kind) {
+  if (!String(kind || "").startsWith("custom:")) return null;
+  const filterId = String(kind).slice("custom:".length);
+  return customFilters().find((filter) => filter.id === filterId) || null;
+}
+
+function filterDefinitionForKind(kind) {
+  return builtInFilterPreset(kind) || customFilterFromKind(kind);
+}
+
+function channelMatchesFilterDefinition(channel, definition) {
+  if (!definition) return true;
+  const categories = definition.categories || (definition.category && definition.category !== "all" ? [definition.category] : []);
+  if (categories.length && !categories.includes(channel.group)) {
+    return false;
+  }
+  const game = gameInfo(channel);
+  const text = normalizedFilterText([
+    channel.name,
+    game.home,
+    game.away,
+  ].join(" "));
+  return (definition.terms || []).some((term) => text.includes(normalizedFilterText(term)));
+}
+
+function isNbaChannel(channel) {
+  return channelMatchesFilterDefinition(channel, filterDefinitionForKind("nba"));
+}
+
+function isFilterKindChannel(channel, kind) {
+  const definition = filterDefinitionForKind(kind);
+  return definition ? channelMatchesFilterDefinition(channel, definition) : true;
+}
+
 function filteredChannels() {
   if (!appState) return [];
   const search = filters.search.trim().toLowerCase();
@@ -443,6 +532,7 @@ function filteredChannels() {
     .filter((channel) => filters.sourceId === "all" || channel.source_id === filters.sourceId)
     .filter((channel) => filters.category === "all" || channel.group === filters.category)
     .filter((channel) => filters.kind !== "favorites" || favorites.has(channel.id))
+    .filter((channel) => !filterDefinitionForKind(filters.kind) || isFilterKindChannel(channel, filters.kind))
     .filter((channel) => filters.kind !== "live-games" || isLiveGameChannel(channel))
     .filter((channel) => {
       if (!search) return true;
@@ -635,6 +725,7 @@ function render() {
   if (!appState) return;
   syncFilters();
   syncSelectedChannel();
+  renderCustomFilters();
   renderStatus();
   renderPlayerSelect();
   renderSortHeaders();
@@ -679,10 +770,34 @@ function syncFilters() {
   if (filters.kind === "live-games" && !liveGameCount()) {
     filters.kind = "all";
   }
+  if (String(filters.kind || "").startsWith("custom:") && !customFilterFromKind(filters.kind)) {
+    filters.kind = "all";
+  }
 }
 
 function liveGameCount() {
   return (appState?.channels || []).filter(isLiveGameChannel).length;
+}
+
+function nbaChannelCount() {
+  return (appState?.channels || []).filter(isNbaChannel).length;
+}
+
+function customFilterCount(filter) {
+  return (appState?.channels || []).filter((channel) => channelMatchesFilterDefinition(channel, filter)).length;
+}
+
+function renderCustomFilters() {
+  els.customFilterList.innerHTML = customFilters().map((filter) => {
+    const kind = customFilterKind(filter.id);
+    return `
+      <button class="nav-row ${filters.kind === kind ? "active" : ""}" data-filter-kind="${escapeHtml(kind)}" type="button">
+        ${iconHtml("filter_alt", "nav-icon")}
+        <span>${escapeHtml(filter.name)}</span>
+        <span class="count">${customFilterCount(filter)}</span>
+      </button>
+    `;
+  }).join("");
 }
 
 function renderStatus() {
@@ -690,6 +805,7 @@ function renderStatus() {
   const liveCount = liveGameCount();
   els.allCount.textContent = total;
   els.favoriteCount.textContent = appState.favorites.length;
+  els.nbaCount.textContent = nbaChannelCount();
   els.liveGameCount.textContent = liveCount;
   els.liveGamesFilter.hidden = liveCount === 0;
   document.querySelectorAll("[data-filter-kind]").forEach((button) => {
@@ -1088,6 +1204,105 @@ function setApiKeyVisibility(visible) {
   }
 }
 
+function fillCustomFilterCategories(selected = "all") {
+  const categories = ["all", ...(appState?.categories || [])];
+  els.customFilterCategorySelect.innerHTML = categories.map((category) => {
+    const label = category === "all" ? "All Categories" : category;
+    return `<option value="${escapeHtml(category)}">${escapeHtml(label)}</option>`;
+  }).join("");
+  els.customFilterCategorySelect.value = categories.includes(selected) ? selected : "all";
+}
+
+function fillCustomFilterPresets(selected = "") {
+  const options = Object.entries(customFilterPresets).map(([id, preset]) => {
+    const label = preset.sport ? `${preset.sport} - ${preset.name}` : preset.name;
+    return `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`;
+  });
+  els.customFilterPresetSelect.innerHTML = [
+    '<option value="">Choose a preset</option>',
+    ...options,
+  ].join("");
+  els.customFilterPresetSelect.value = selected;
+}
+
+function openCustomFilterDialog() {
+  fillCustomFilterPresets();
+  fillCustomFilterCategories("all");
+  els.customFilterForm.reset();
+  els.customFilterPresetSelect.value = "";
+  els.customFilterCategorySelect.value = "all";
+  closeModals();
+  openModal(els.customFilterModal);
+}
+
+function applyCustomFilterPreset(presetId) {
+  const preset = presetById(presetId);
+  if (!preset) return;
+  els.customFilterNameInput.value = preset.name;
+  fillCustomFilterCategories(preset.category);
+  els.customFilterTermsInput.value = preset.terms.join(", ");
+  els.customFilterNameInput.focus();
+  els.customFilterNameInput.select();
+}
+
+function parseCustomFilterTerms(value) {
+  const seen = new Set();
+  return String(value || "")
+    .split(/[\n,]+/)
+    .map((term) => term.trim())
+    .filter((term) => {
+      const key = term.toLowerCase();
+      if (!term || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function makeCustomFilterId(name) {
+  const base = String(name || "filter").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "filter";
+  const existingIds = new Set(customFilters().map((filter) => filter.id));
+  let id = base;
+  let index = 2;
+  while (existingIds.has(id) || customFilterPresets[id] || BUILT_IN_FILTER_PRESET_IDS[id]) {
+    id = `${base}_${index}`;
+    index += 1;
+  }
+  return id;
+}
+
+async function saveCustomFilter() {
+  const name = els.customFilterNameInput.value.trim();
+  const category = els.customFilterCategorySelect.value || "all";
+  const terms = parseCustomFilterTerms(els.customFilterTermsInput.value);
+  if (!name) {
+    showToast("Filter name is required", "error");
+    return;
+  }
+  if (!terms.length) {
+    showToast("Add at least one channel term", "error");
+    return;
+  }
+
+  const nextFilters = [
+    ...customFilters(),
+    {
+      id: makeCustomFilterId(name),
+      name,
+      category,
+      terms,
+    },
+  ];
+  const data = await api("/api/settings", {
+    method: "POST",
+    body: JSON.stringify({ custom_filters: nextFilters }),
+  });
+  setAppState(data.state, { preserveGames: true });
+  filters.kind = customFilterKind(nextFilters[nextFilters.length - 1].id);
+  closeModals();
+  render();
+  showToast("Filter saved");
+}
+
 function openModal(modal) {
   modal.hidden = false;
   const input = modal.querySelector("input");
@@ -1095,6 +1310,7 @@ function openModal(modal) {
 }
 
 function closeModals() {
+  els.customFilterModal.hidden = true;
   els.urlModal.hidden = true;
   els.renameSourceModal.hidden = true;
   els.removeSourceModal.hidden = true;
@@ -1163,6 +1379,21 @@ function bindEvents() {
   els.settingsButton.addEventListener("click", () => {
     fillSettingsForm();
     openModal(els.settingsModal);
+  });
+
+  els.addFilterButton.addEventListener("click", openCustomFilterDialog);
+
+  els.customFilterPresetSelect.addEventListener("change", () => {
+    applyCustomFilterPreset(els.customFilterPresetSelect.value);
+  });
+
+  els.customFilterForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await saveCustomFilter();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
   });
 
   els.aboutButton.addEventListener("click", () => {
@@ -1345,11 +1576,11 @@ function bindEvents() {
     render();
   });
 
-  document.querySelectorAll("[data-filter-kind]").forEach((button) => {
-    button.addEventListener("click", () => {
-      filters.kind = button.dataset.filterKind;
-      render();
-    });
+  els.filtersSection.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-filter-kind]");
+    if (!button) return;
+    filters.kind = button.dataset.filterKind;
+    render();
   });
 
   els.categoryList.addEventListener("click", (event) => {
@@ -1487,8 +1718,10 @@ function initEls() {
   [
     "importPlaylistButton", "importMenu", "importFileButton", "importUrlButton", "refreshButton", "settingsButton",
     "playerSelect", "zoomOutButton", "zoomValue", "zoomInButton", "sidebarResizer",
-    "sourceList", "allCount", "favoriteCount", "liveGamesFilter", "liveGameCount", "categoryList", "resultCount",
-    "searchInput", "channelList", "detailPanel", "fileInput", "urlModal",
+    "sourceList", "filtersSection", "addFilterButton", "allCount", "favoriteCount", "nbaCount", "liveGamesFilter",
+    "liveGameCount", "customFilterList", "categoryList", "resultCount",
+    "searchInput", "channelList", "detailPanel", "fileInput", "customFilterModal", "customFilterForm",
+    "customFilterNameInput", "customFilterCategorySelect", "customFilterTermsInput", "customFilterPresetSelect", "urlModal",
     "urlForm", "urlNameInput", "urlInput", "renameSourceModal", "renameSourceForm", "renameSourceInput",
     "confirmRenameSourceButton", "removeSourceModal", "removeSourceName",
     "confirmRemoveSourceButton", "settingsModal", "settingsForm",
@@ -1506,6 +1739,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initEls();
   bindEvents();
   try {
+    await loadCustomFilterPresets();
     await loadState();
   } catch (error) {
     showToast(error.message, "error");

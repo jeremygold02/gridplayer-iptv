@@ -368,8 +368,42 @@ button {
   text-transform: uppercase;
 }
 
+.section-title-with-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.section-action-button {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.section-action-button:hover,
+.section-action-button:focus-visible {
+  border-color: rgba(16, 183, 164, 0.5);
+  background: rgba(16, 183, 164, 0.1);
+  color: var(--teal);
+  outline: 0;
+}
+
+.section-action-button .material-icons {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+}
+
 .source-list,
-.category-list {
+.category-list,
+.custom-filter-list {
   display: grid;
   gap: 2px;
 }
@@ -1145,11 +1179,25 @@ button {
 
 .modal input[type="text"],
 .modal input[type="url"],
-.modal input[type="password"] {
+.modal input[type="password"],
+.modal select,
+.modal textarea {
   height: 42px;
   padding: 0 12px;
   border: 1px solid var(--line);
   background: #0e1313;
+}
+
+.modal select,
+.modal textarea {
+  color: var(--text);
+  outline: 0;
+}
+
+.modal textarea {
+  min-height: 104px;
+  padding-top: 10px;
+  resize: vertical;
 }
 
 .modal-copy {
