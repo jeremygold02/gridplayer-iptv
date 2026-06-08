@@ -767,9 +767,11 @@ async function pickPlayerExecutable(playerId, button) {
 
 function fillAboutDialog() {
   const meta = appMeta();
+  pendingUpdate = null;
   els.aboutVersion.textContent = `${meta.name} ${meta.version}`;
   els.aboutRepoLink.href = meta.repoUrl;
   els.aboutRepoLink.textContent = "View source on GitHub";
+  els.checkUpdatesButton.hidden = false;
   els.updateStatus.textContent = "";
   els.checkUpdatesButton.disabled = false;
   els.aboutInstallUpdateButton.hidden = true;
@@ -813,6 +815,7 @@ function updateUrl(update) {
 
 function renderAboutUpdateResult(update) {
   pendingUpdate = update;
+  els.checkUpdatesButton.hidden = Boolean(update.update_available);
   els.updateStatus.className = `update-status ${update.update_available ? "available" : ""}`;
   els.updateStatus.innerHTML = update.update_available
     ? `${escapeHtml(update.message)} <a href="${escapeHtml(updateUrl(update))}" target="_blank" rel="noopener noreferrer">View release</a>`
@@ -851,18 +854,18 @@ async function checkForLaunchUpdate() {
   }
 }
 
-async function installPendingUpdate() {
+async function installPendingUpdate(statusElement = els.updateInstallStatus) {
   if (!pendingUpdate) return;
   els.updateInstallButton.disabled = true;
   els.aboutInstallUpdateButton.disabled = true;
-  els.updateInstallStatus.className = "update-status";
-  els.updateInstallStatus.textContent = "Downloading update...";
+  statusElement.className = "update-status";
+  statusElement.textContent = "Downloading update...";
   try {
     const result = await api("/api/update/install", { method: "POST" });
-    els.updateInstallStatus.textContent = result.message || "Update downloaded. Restarting...";
+    statusElement.textContent = result.message || "Update downloaded. Restarting...";
   } catch (error) {
-    els.updateInstallStatus.className = "update-status error";
-    els.updateInstallStatus.textContent = error.message;
+    statusElement.className = "update-status error";
+    statusElement.textContent = error.message;
     els.updateInstallButton.disabled = false;
     els.aboutInstallUpdateButton.disabled = false;
   }
@@ -909,9 +912,7 @@ function bindEvents() {
   });
 
   els.aboutInstallUpdateButton.addEventListener("click", () => {
-    if (pendingUpdate) {
-      showUpdateDialog(pendingUpdate);
-    }
+    installPendingUpdate(els.updateStatus);
   });
 
   document.querySelectorAll("[data-close-modal]").forEach((button) => {
