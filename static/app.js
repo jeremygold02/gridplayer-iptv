@@ -42,6 +42,7 @@ let uiPrefs = {
 let sidebarResize = null;
 let sportsRefreshTimer = null;
 let sportsRefreshInFlight = false;
+let playlistRefreshInFlight = false;
 let apiKeyVisible = false;
 let launchUpdateChecked = false;
 let pendingUpdate = null;
@@ -158,7 +159,7 @@ async function loadState() {
   render();
   scheduleSportsRefresh();
   checkForLaunchUpdate();
-  refreshSportsData();
+  refreshPlaylistData({ refreshSports: true });
 }
 
 function scheduleSportsRefresh() {
@@ -204,6 +205,34 @@ async function refreshSportsData(options = {}) {
     }
   } finally {
     sportsRefreshInFlight = false;
+  }
+}
+
+async function refreshPlaylistData(options = {}) {
+  if (playlistRefreshInFlight) return null;
+
+  playlistRefreshInFlight = true;
+  const refreshSportsAfter = Boolean(options.refreshSports);
+  try {
+    const data = await api("/api/refresh", { method: "POST" });
+    setAppState(data.state, { preserveGames: true });
+    render();
+    scheduleSportsRefresh();
+    if (options.showResult) {
+      const failed = data.errors?.length || 0;
+      showToast(failed ? `Refresh finished with ${failed} issue${failed === 1 ? "" : "s"}` : "Playlists refreshed");
+    }
+    return data;
+  } catch (error) {
+    if (options.showErrors) {
+      showToast(error.message, "error");
+    }
+    return null;
+  } finally {
+    playlistRefreshInFlight = false;
+    if (refreshSportsAfter) {
+      refreshSportsData();
+    }
   }
 }
 
@@ -1171,17 +1200,7 @@ function bindEvents() {
   });
 
   els.refreshButton.addEventListener("click", async () => {
-    try {
-      const data = await api("/api/refresh", { method: "POST" });
-      setAppState(data.state, { preserveGames: true });
-      render();
-      scheduleSportsRefresh();
-      refreshSportsData();
-      const failed = data.errors?.length || 0;
-      showToast(failed ? `Refresh finished with ${failed} issue${failed === 1 ? "" : "s"}` : "Playlists refreshed");
-    } catch (error) {
-      showToast(error.message, "error");
-    }
+    await refreshPlaylistData({ refreshSports: true, showErrors: true, showResult: true });
   });
 
   els.toggleApiKeyButton.addEventListener("click", () => {
