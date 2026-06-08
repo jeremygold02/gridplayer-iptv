@@ -105,18 +105,13 @@ button {
   width: 36px;
   height: 36px;
   place-items: center;
-  border: 1px solid var(--line);
-  background: linear-gradient(180deg, #1c2424, #0f1414);
 }
 
-.brand-mark .material-icons {
-  display: grid;
-  width: 22px;
-  height: 22px;
-  margin-top: 0;
-  color: inherit;
-  font-size: 22px;
-  font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 24;
+.brand-mark img {
+  display: block;
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
 }
 
 .brand h1,

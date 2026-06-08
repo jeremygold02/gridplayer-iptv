@@ -7,7 +7,7 @@ from typing import Any
 from flask import Flask, jsonify, render_template, request, send_file
 
 from . import config
-from .config import API_SPORTS_KEY_NAME, ASSET_DIR, MAX_QUEUE_ITEMS, PLAYER_CONFIG, QUEUE_EXPORT_PATH
+from .config import API_SPORTS_KEY_NAME, APP_DIR, ASSET_DIR, MAX_QUEUE_ITEMS, PLAYER_CONFIG, QUEUE_EXPORT_PATH
 from .players import launch_player, normalize_player_id, player_label, public_players
 from .playlists import (
     fetch_playlist_url,
@@ -28,6 +28,21 @@ app = Flask(
     static_folder=str(ASSET_DIR / "static"),
 )
 state_lock = threading.RLock()
+
+
+def app_icon_path() -> Path | None:
+    for icon_path in (APP_DIR / "icon.ico", ASSET_DIR / "icon.ico"):
+        if icon_path.is_file():
+            return icon_path
+    return None
+
+
+@app.get("/icon.ico")
+def app_icon():
+    icon_path = app_icon_path()
+    if not icon_path:
+        return "", 404
+    return send_file(icon_path, mimetype="image/x-icon")
 
 
 def public_state(state: dict[str, Any] | None = None, enrich_games: bool = False) -> dict[str, Any]:
