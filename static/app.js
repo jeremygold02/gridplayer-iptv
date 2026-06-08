@@ -76,8 +76,8 @@ function playerById(playerId) {
 function selectablePlayers() {
   return (appState?.players?.items || []).filter((player) => (
     PLAYER_PATH_FIELDS[player.id]
-    && player.configured_path
-    && player.configured_available
+    && player.available
+    && player.path
   ));
 }
 
