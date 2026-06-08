@@ -23,6 +23,14 @@ const GAME_SORT_RANK = {
   unknown: 4,
   stream: 5,
 };
+const API_REQUEST_POLICIES = {
+  "GET /api/update/check": "share",
+  "GET /api/update-check": "share",
+  "POST /api/refresh": "share",
+  "POST /api/sports/refresh": "share",
+  "POST /api/update/install": "share",
+  "POST /api/settings": "queue",
+};
 let appState = null;
 let selectedChannelId = null;
 let filters = {
@@ -41,8 +49,6 @@ let uiPrefs = {
 };
 let sidebarResize = null;
 let sportsRefreshTimer = null;
-let sportsRefreshInFlight = false;
-let playlistRefreshInFlight = false;
 let apiKeyVisible = false;
 let launchUpdateChecked = false;
 let pendingUpdate = null;
@@ -54,6 +60,8 @@ let lastChannelClick = {
   id: null,
   time: 0,
 };
+const sharedApiRequests = new Map();
+const queuedApiRequests = new Map();
 
 function $(id) {
   return document.getElementById(id);
@@ -129,10 +137,60 @@ function iconHtml(name, extraClass = "") {
   return `<span class="material-icons ${extraClass}" aria-hidden="true">${escapeHtml(name)}</span>`;
 }
 
+function apiRequestKey(path, method) {
+  return `${method} ${String(path).split("?")[0]}`;
+}
+
+function apiRequestPolicy(path, method, override) {
+  if (override) return override;
+  return API_REQUEST_POLICIES[apiRequestKey(path, method)] || "allow";
+}
+
 async function api(path, options = {}) {
+  const { guardPolicy, headers, ...fetchOptions } = options;
+  const method = String(fetchOptions.method || "GET").toUpperCase();
+  const key = apiRequestKey(path, method);
+  const policy = apiRequestPolicy(path, method, guardPolicy);
+
+  if (policy === "share") {
+    const existingRequest = sharedApiRequests.get(key);
+    if (existingRequest) return existingRequest;
+
+    const request = performApiRequest(path, fetchOptions, headers)
+      .finally(() => {
+        if (sharedApiRequests.get(key) === request) {
+          sharedApiRequests.delete(key);
+        }
+      });
+    sharedApiRequests.set(key, request);
+    return request;
+  }
+
+  if (policy === "queue") {
+    const previousRequest = queuedApiRequests.get(key) || Promise.resolve();
+    const request = previousRequest
+      .catch(() => undefined)
+      .then(() => performApiRequest(path, fetchOptions, headers));
+    const trackedRequest = request.finally(() => {
+      if (queuedApiRequests.get(key) === trackedRequest) {
+        queuedApiRequests.delete(key);
+      }
+    });
+    queuedApiRequests.set(key, trackedRequest);
+    return request;
+  }
+
+  return performApiRequest(path, fetchOptions, headers);
+}
+
+async function performApiRequest(path, options = {}, headers = undefined) {
+  const defaultHeaders = options.body instanceof FormData ? {} : { "Content-Type": "application/json" };
   const response = await fetch(path, {
-    headers: options.body instanceof FormData ? undefined : { "Content-Type": "application/json" },
     ...options,
+    headers: {
+      ...defaultHeaders,
+      ...(headers || {}),
+    },
   });
   const payload = await response.json();
   if (!payload.success) {
@@ -192,26 +250,22 @@ function setAppState(nextState, options = {}) {
 }
 
 async function refreshSportsData(options = {}) {
-  if (sportsRefreshInFlight || !appState?.sports?.configured) return;
-  sportsRefreshInFlight = true;
+  if (!appState?.sports?.configured) return null;
   try {
     const data = await api("/api/sports/refresh", { method: "POST" });
     setAppState(data);
     render();
     scheduleSportsRefresh();
+    return data;
   } catch (error) {
     if (options.showErrors) {
       showToast(error.message, "error");
     }
-  } finally {
-    sportsRefreshInFlight = false;
+    return null;
   }
 }
 
 async function refreshPlaylistData(options = {}) {
-  if (playlistRefreshInFlight) return null;
-
-  playlistRefreshInFlight = true;
   const refreshSportsAfter = Boolean(options.refreshSports);
   try {
     const data = await api("/api/refresh", { method: "POST" });
@@ -229,7 +283,6 @@ async function refreshPlaylistData(options = {}) {
     }
     return null;
   } finally {
-    playlistRefreshInFlight = false;
     if (refreshSportsAfter) {
       refreshSportsData();
     }
