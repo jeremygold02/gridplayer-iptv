@@ -100,6 +100,7 @@ def main() -> None:
         width=1480,
         height=920,
         min_size=(1100, 720),
+        maximized=True,
         text_select=True,
     )
     webview.start(debug=args.debug, icon=window_icon_path())
