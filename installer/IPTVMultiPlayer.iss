@@ -26,7 +26,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
-UninstallDisplayIcon={app}\IPTV Multi Player.exe
+UninstallDisplayIcon={app}\icon.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -37,10 +37,15 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "..\dist\IPTV Multi Player.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
+
+[InstallDelete]
+Type: files; Name: "{autoprograms}\{#MyAppName}.lnk"
+Type: files; Name: "{autodesktop}\{#MyAppName}.lnk"
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\IPTV Multi Player.exe"; WorkingDir: "{app}"; IconFilename: "{app}\IPTV Multi Player.exe"; AppUserModelID: "{#MyAppUserModelID}"; Tasks: startmenuicon
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\IPTV Multi Player.exe"; WorkingDir: "{app}"; IconFilename: "{app}\IPTV Multi Player.exe"; AppUserModelID: "{#MyAppUserModelID}"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\IPTV Multi Player.exe"; WorkingDir: "{app}"; IconFilename: "{app}\icon.ico"; AppUserModelID: "{#MyAppUserModelID}"; Tasks: startmenuicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\IPTV Multi Player.exe"; WorkingDir: "{app}"; IconFilename: "{app}\icon.ico"; AppUserModelID: "{#MyAppUserModelID}"; Tasks: desktopicon
 
 [Run]
 Filename: "{autoprograms}\{#MyAppName}.lnk"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: shellexec nowait postinstall skipifsilent; Check: WizardIsTaskSelected('startmenuicon')

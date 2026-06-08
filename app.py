@@ -43,6 +43,9 @@ def load_webview():
 
 
 def window_icon_path() -> str | None:
+    installed_icon_path = config.APP_DIR / "icon.ico"
+    if installed_icon_path.is_file():
+        return str(installed_icon_path)
     icon_path = config.ASSET_DIR / "icon.ico"
     return str(icon_path) if icon_path.is_file() else None
 
