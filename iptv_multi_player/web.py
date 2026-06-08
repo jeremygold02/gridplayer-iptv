@@ -7,7 +7,7 @@ from typing import Any
 from flask import Flask, jsonify, render_template, request, send_file
 
 from . import config
-from .config import API_SPORTS_KEY_NAME, ASSET_DIR, MAX_QUEUE_ITEMS, QUEUE_EXPORT_PATH
+from .config import API_SPORTS_KEY_NAME, ASSET_DIR, MAX_QUEUE_ITEMS, PLAYER_CONFIG, QUEUE_EXPORT_PATH
 from .players import launch_player, normalize_player_id, player_label, public_players
 from .playlists import (
     fetch_playlist_url,
@@ -330,6 +330,47 @@ def api_export_queue():
             lines.append(channel["url"])
         QUEUE_EXPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return send_file(QUEUE_EXPORT_PATH, as_attachment=True, download_name="iptv-multi-player-queue.m3u")
+
+
+@app.post("/api/select-player-executable")
+def api_select_player_executable():
+    payload = request.get_json(silent=True) or {}
+    player = str(payload.get("player", "")).strip().lower()
+    if player not in PLAYER_CONFIG:
+        return json_error("Unknown player.", 404)
+    if not config.DESKTOP_MODE:
+        return json_error("The file picker is available in the desktop app.")
+
+    try:
+        import webview
+    except ImportError:
+        return json_error("The file picker is unavailable because pywebview is not installed.")
+
+    windows = getattr(webview, "windows", [])
+    if not windows:
+        return json_error("The app window is not ready.")
+
+    try:
+        file_dialog = getattr(webview, "FileDialog", None)
+        dialog_type = file_dialog.OPEN if file_dialog else webview.OPEN_DIALOG
+        selection = windows[0].create_file_dialog(
+            dialog_type,
+            allow_multiple=False,
+            file_types=("Executable files (*.exe)", "All files (*.*)"),
+        )
+    except Exception as exc:  # noqa: BLE001 - native dialog failures should stay user-facing
+        return json_error(f"Could not open file picker: {exc}")
+
+    if not selection:
+        return jsonify({"success": True, "data": {"path": ""}})
+
+    selected_path = Path(selection[0])
+    if selected_path.suffix.lower() != ".exe":
+        return json_error("Choose an .exe file.")
+    if not selected_path.is_file():
+        return json_error("Selected file was not found.")
+
+    return jsonify({"success": True, "data": {"path": str(selected_path), "player": player}})
 
 
 @app.post("/api/settings")

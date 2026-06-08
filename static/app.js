@@ -9,6 +9,11 @@ const PLAYER_PATH_FIELDS = {
   mpv: "mpv_path",
   vlc: "vlc_path",
 };
+const PLAYER_PATH_INPUT_IDS = {
+  gridplayer: "gridplayerPathInput",
+  mpv: "mpvPathInput",
+  vlc: "vlcPathInput",
+};
 const GAME_SORT_RANK = {
   loading: 0,
   live: 0,
@@ -97,6 +102,11 @@ function playerPathValue(playerId) {
   const pathField = PLAYER_PATH_FIELDS[playerId];
   if (!pathField) return "";
   return appState?.settings?.[pathField] || playerById(playerId)?.path || "";
+}
+
+function playerPathInput(playerId) {
+  const inputId = PLAYER_PATH_INPUT_IDS[playerId];
+  return inputId ? els[inputId] : null;
 }
 
 function channelById(channelId) {
@@ -717,7 +727,42 @@ function fillSettingsForm() {
   els.mpvPathInput.value = playerPathValue("mpv");
   els.vlcPathInput.value = playerPathValue("vlc");
   els.apiSportsKeyInput.value = appState?.api_sports?.key || "";
+  syncPlayerPathPickerButtons();
   setApiKeyVisibility(false);
+}
+
+function syncPlayerPathPickerButtons() {
+  document.querySelectorAll("[data-player-path-picker]").forEach((button) => {
+    const playerId = button.dataset.playerPathPicker;
+    const label = playerById(playerId)?.label || playerId;
+    const canBrowse = desktopRuntime();
+    button.disabled = !canBrowse;
+    button.title = canBrowse
+      ? `Browse for ${label} executable`
+      : "File picker is available in the desktop app";
+    button.setAttribute("aria-label", button.title);
+  });
+}
+
+async function pickPlayerExecutable(playerId, button) {
+  const input = playerPathInput(playerId);
+  if (!input) return;
+
+  button.disabled = true;
+  try {
+    const data = await api("/api/select-player-executable", {
+      method: "POST",
+      body: JSON.stringify({ player: playerId }),
+    });
+    if (data.path) {
+      input.value = data.path;
+      input.focus();
+    }
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    syncPlayerPathPickerButtons();
+  }
 }
 
 function fillAboutDialog() {
@@ -958,6 +1003,12 @@ function bindEvents() {
 
   els.toggleApiKeyButton.addEventListener("click", () => {
     setApiKeyVisibility(!apiKeyVisible);
+  });
+
+  document.querySelectorAll("[data-player-path-picker]").forEach((button) => {
+    button.addEventListener("click", () => {
+      pickPlayerExecutable(button.dataset.playerPathPicker, button);
+    });
   });
 
   els.playerSelect.addEventListener("change", async () => {

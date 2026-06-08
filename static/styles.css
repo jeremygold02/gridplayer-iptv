@@ -1024,16 +1024,19 @@ button {
   color: var(--text);
 }
 
+.path-input-row,
 .secret-input-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 42px;
   gap: 8px;
 }
 
+.path-input-row input,
 .secret-input-row input {
   min-width: 0;
 }
 
+.path-input-row .icon-button,
 .secret-input-row .icon-button {
   width: 42px;
   height: 42px;

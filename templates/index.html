@@ -160,18 +160,33 @@
             <span class="material-icons" aria-hidden="true">close</span>
           </button>
         </div>
-        <label>
-          <span>GridPlayer executable</span>
-          <input id="gridplayerPathInput" type="text" placeholder="C:\Program Files (x86)\GridPlayer\GridPlayer.exe">
-        </label>
-        <label>
-          <span>MPV executable</span>
-          <input id="mpvPathInput" type="text" placeholder="C:\Program Files\mpv\mpv.exe">
-        </label>
-        <label>
-          <span>VLC executable</span>
-          <input id="vlcPathInput" type="text" placeholder="C:\Program Files (x86)\VideoLAN\VLC\vlc.exe">
-        </label>
+        <div class="modal-field">
+          <span id="gridplayerPathLabel">GridPlayer executable</span>
+          <div class="path-input-row">
+            <input id="gridplayerPathInput" type="text" placeholder="Select or paste path to GridPlayer.exe" aria-labelledby="gridplayerPathLabel">
+            <button class="icon-button" data-player-path-picker="gridplayer" type="button" title="Browse for GridPlayer executable" aria-label="Browse for GridPlayer executable">
+              <span class="material-icons" aria-hidden="true">folder_open</span>
+            </button>
+          </div>
+        </div>
+        <div class="modal-field">
+          <span id="mpvPathLabel">MPV executable</span>
+          <div class="path-input-row">
+            <input id="mpvPathInput" type="text" placeholder="Select or paste path to mpv.exe" aria-labelledby="mpvPathLabel">
+            <button class="icon-button" data-player-path-picker="mpv" type="button" title="Browse for MPV executable" aria-label="Browse for MPV executable">
+              <span class="material-icons" aria-hidden="true">folder_open</span>
+            </button>
+          </div>
+        </div>
+        <div class="modal-field">
+          <span id="vlcPathLabel">VLC executable</span>
+          <div class="path-input-row">
+            <input id="vlcPathInput" type="text" placeholder="Select or paste path to vlc.exe" aria-labelledby="vlcPathLabel">
+            <button class="icon-button" data-player-path-picker="vlc" type="button" title="Browse for VLC executable" aria-label="Browse for VLC executable">
+              <span class="material-icons" aria-hidden="true">folder_open</span>
+            </button>
+          </div>
+        </div>
         <div class="modal-field">
           <span>API-Sports key</span>
           <div class="secret-input-row">
