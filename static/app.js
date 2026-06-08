@@ -347,6 +347,11 @@ function updateSidebarResize(event) {
   applySidebarWidth();
 }
 
+function isLiveGameChannel(channel) {
+  const game = gameInfo(channel);
+  return shouldShowGameInfo(game) && game.kind === "live";
+}
+
 function filteredChannels() {
   if (!appState) return [];
   const search = filters.search.trim().toLowerCase();
@@ -355,6 +360,7 @@ function filteredChannels() {
     .filter((channel) => filters.sourceId === "all" || channel.source_id === filters.sourceId)
     .filter((channel) => filters.category === "all" || channel.group === filters.category)
     .filter((channel) => filters.kind !== "favorites" || favorites.has(channel.id))
+    .filter((channel) => filters.kind !== "live-games" || isLiveGameChannel(channel))
     .filter((channel) => {
       if (!search) return true;
       return [channel.name, channel.group, sourceName(channel.source_id), searchableGameText(channel)]
@@ -586,12 +592,26 @@ function syncFilters() {
   if (!categories.has(filters.category)) {
     filters.category = "all";
   }
+
+  if (filters.kind === "live-games" && !liveGameCount()) {
+    filters.kind = "all";
+  }
+}
+
+function liveGameCount() {
+  return (appState?.channels || []).filter(isLiveGameChannel).length;
 }
 
 function renderStatus() {
   const total = appState.channels.length;
+  const liveCount = liveGameCount();
   els.allCount.textContent = total;
   els.favoriteCount.textContent = appState.favorites.length;
+  els.liveGameCount.textContent = liveCount;
+  els.liveGamesFilter.hidden = liveCount === 0;
+  document.querySelectorAll("[data-filter-kind]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.filterKind === filters.kind);
+  });
 }
 
 function renderPlayerSelect() {
@@ -1129,16 +1149,11 @@ function bindEvents() {
     render();
   });
 
-  document.querySelector("[data-filter-kind='all']").addEventListener("click", () => {
-    filters.kind = "all";
-    document.querySelectorAll("[data-filter-kind]").forEach((button) => button.classList.toggle("active", button.dataset.filterKind === "all"));
-    renderChannels();
-  });
-
-  document.querySelector("[data-filter-kind='favorites']").addEventListener("click", () => {
-    filters.kind = "favorites";
-    document.querySelectorAll("[data-filter-kind]").forEach((button) => button.classList.toggle("active", button.dataset.filterKind === "favorites"));
-    renderChannels();
+  document.querySelectorAll("[data-filter-kind]").forEach((button) => {
+    button.addEventListener("click", () => {
+      filters.kind = button.dataset.filterKind;
+      render();
+    });
   });
 
   els.categoryList.addEventListener("click", (event) => {
@@ -1276,7 +1291,7 @@ function initEls() {
   [
     "importFileButton", "importUrlButton", "refreshButton", "settingsButton",
     "playerSelect", "zoomOutButton", "zoomValue", "zoomInButton", "sidebarResizer",
-    "sourceList", "allCount", "favoriteCount", "categoryList", "resultCount",
+    "sourceList", "allCount", "favoriteCount", "liveGamesFilter", "liveGameCount", "categoryList", "resultCount",
     "searchInput", "channelList", "detailPanel", "fileInput", "urlModal",
     "urlForm", "urlNameInput", "urlInput", "removeSourceModal", "removeSourceName",
     "confirmRemoveSourceButton", "settingsModal", "settingsForm",
