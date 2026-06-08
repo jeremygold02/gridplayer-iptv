@@ -973,9 +973,43 @@ function closeModals() {
   els.updateModal.hidden = true;
 }
 
+function setImportMenuOpen(open) {
+  els.importMenu.hidden = !open;
+  els.importPlaylistButton.setAttribute("aria-expanded", String(open));
+}
+
+function closeImportMenu() {
+  setImportMenuOpen(false);
+}
+
 function bindEvents() {
-  els.importFileButton.addEventListener("click", () => els.fileInput.click());
-  els.importUrlButton.addEventListener("click", () => openModal(els.urlModal));
+  els.importPlaylistButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setImportMenuOpen(els.importMenu.hidden);
+  });
+
+  els.importFileButton.addEventListener("click", () => {
+    closeImportMenu();
+    els.fileInput.click();
+  });
+
+  els.importUrlButton.addEventListener("click", () => {
+    closeImportMenu();
+    openModal(els.urlModal);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".import-dropdown")) {
+      closeImportMenu();
+    }
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeImportMenu();
+    }
+  });
+
   els.settingsButton.addEventListener("click", () => {
     fillSettingsForm();
     openModal(els.settingsModal);
@@ -1289,7 +1323,7 @@ function bindEvents() {
 
 function initEls() {
   [
-    "importFileButton", "importUrlButton", "refreshButton", "settingsButton",
+    "importPlaylistButton", "importMenu", "importFileButton", "importUrlButton", "refreshButton", "settingsButton",
     "playerSelect", "zoomOutButton", "zoomValue", "zoomInButton", "sidebarResizer",
     "sourceList", "allCount", "favoriteCount", "liveGamesFilter", "liveGameCount", "categoryList", "resultCount",
     "searchInput", "channelList", "detailPanel", "fileInput", "urlModal",

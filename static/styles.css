@@ -138,6 +138,61 @@ button {
   gap: 8px;
 }
 
+.import-dropdown {
+  position: relative;
+}
+
+.import-menu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  min-width: 176px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111616;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.36);
+}
+
+.import-menu[hidden] {
+  display: none;
+}
+
+.import-menu button {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.import-menu button:hover,
+.import-menu button:focus-visible {
+  background: #1a2322;
+  outline: 0;
+}
+
+.import-menu .material-icons {
+  width: 18px;
+  height: 18px;
+  color: var(--teal);
+  font-size: 18px;
+}
+
+.dropdown-arrow {
+  margin-left: -2px;
+}
+
 .zoom-control {
   display: inline-flex;
   align-items: center;
@@ -250,6 +305,10 @@ button {
   width: 18px;
   height: 18px;
   font-size: 18px;
+}
+
+.tool-button .material-icons:not(.dropdown-arrow) {
+  transform: translateY(1px);
 }
 
 .workspace {
@@ -1222,6 +1281,11 @@ button {
   .toolbar .player-picker > span,
   .toolbar .zoom-control > span {
     display: none;
+  }
+
+  .import-menu {
+    left: auto;
+    right: 0;
   }
 
   .player-picker {

@@ -20,14 +20,23 @@
           </div>
         </div>
         <nav class="toolbar" aria-label="Primary actions">
-          <button class="tool-button" id="importFileButton" type="button">
-            <span class="material-icons" aria-hidden="true">file_download</span>
-            <span>Import M3U</span>
-          </button>
-          <button class="tool-button" id="importUrlButton" type="button">
-            <span class="material-icons" aria-hidden="true">link</span>
-            <span>Add URL</span>
-          </button>
+          <div class="import-dropdown">
+            <button class="tool-button" id="importPlaylistButton" type="button" aria-haspopup="menu" aria-expanded="false">
+              <span class="material-icons" aria-hidden="true">playlist_add</span>
+              <span>Import Playlist</span>
+              <span class="material-icons dropdown-arrow" aria-hidden="true">arrow_drop_down</span>
+            </button>
+            <div class="import-menu" id="importMenu" role="menu" hidden>
+              <button id="importFileButton" role="menuitem" type="button">
+                <span class="material-icons" aria-hidden="true">file_download</span>
+                <span>Import File</span>
+              </button>
+              <button id="importUrlButton" role="menuitem" type="button">
+                <span class="material-icons" aria-hidden="true">link</span>
+                <span>Add URL</span>
+              </button>
+            </div>
+          </div>
           <button class="tool-button" id="refreshButton" type="button">
             <span class="material-icons" aria-hidden="true">refresh</span>
             <span>Refresh</span>
