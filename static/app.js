@@ -46,6 +46,8 @@ let apiKeyVisible = false;
 let launchUpdateChecked = false;
 let pendingUpdate = null;
 let pendingSourceRemovalId = null;
+let categoryDrag = null;
+let suppressCategoryClick = false;
 let lastChannelClick = {
   id: null,
   time: 0,
@@ -440,6 +442,12 @@ async function toggleCategoryPin(category) {
   const next = current.includes(category)
     ? current.filter((item) => item !== category)
     : [...current, category];
+  await savePinnedCategories(next);
+  renderCategories();
+}
+
+async function savePinnedCategories(categories) {
+  const next = sanitizePinnedCategories(categories);
   if (desktopRuntime()) {
     const data = await api("/api/settings", {
       method: "POST",
@@ -456,6 +464,20 @@ async function toggleCategoryPin(category) {
       },
     };
   }
+}
+
+async function reorderPinnedCategory(category, targetCategory, position = "after") {
+  const current = appState?.settings?.pinned_categories || [];
+  if (!current.includes(category)) return;
+
+  const next = current.filter((item) => item !== category);
+  const targetIndex = targetCategory ? next.indexOf(targetCategory) : -1;
+  const insertIndex = targetIndex === -1
+    ? next.length
+    : targetIndex + (position === "after" ? 1 : 0);
+
+  next.splice(insertIndex, 0, category);
+  await savePinnedCategories(next);
   renderCategories();
 }
 
@@ -620,8 +642,12 @@ function renderCategories() {
     const icon = category === "all"
       ? iconHtml("category", "nav-icon")
       : categoryPinHtml(category, pinnedSet.has(category));
+    const isPinned = category !== "all" && pinnedSet.has(category);
+    const pinnedAttrs = isPinned
+      ? ` data-pinned-category="${escapeHtml(category)}"`
+      : "";
     return `
-      <button class="nav-row ${filters.category === category ? "active" : ""}" data-category="${escapeHtml(category)}" type="button">
+      <button class="nav-row ${filters.category === category ? "active" : ""} ${isPinned ? "pinned-category" : ""}" data-category="${escapeHtml(category)}"${pinnedAttrs} type="button">
         ${icon}
         <span>${escapeHtml(label)}</span>
         <span class="count">${count}</span>
@@ -807,6 +833,36 @@ async function removePendingSource() {
   } finally {
     els.confirmRemoveSourceButton.disabled = false;
   }
+}
+
+function clearCategoryDragState() {
+  document.querySelectorAll(".category-drag-over-before, .category-drag-over-after").forEach((row) => {
+    row.classList.remove("category-drag-over-before", "category-drag-over-after");
+  });
+}
+
+function clearCategoryDraggingState() {
+  document.querySelectorAll(".is-dragging-category").forEach((row) => {
+    row.classList.remove("is-dragging-category");
+  });
+  clearCategoryDragState();
+}
+
+function categoryDropTarget(row, clientY) {
+  if (!row || !categoryDrag || row.dataset.pinnedCategory === categoryDrag.category) {
+    return null;
+  }
+
+  const rect = row.getBoundingClientRect();
+  return {
+    category: row.dataset.pinnedCategory,
+    position: clientY > rect.top + rect.height / 2 ? "after" : "before",
+    row,
+  };
+}
+
+function categoryRowFromPoint(clientX, clientY) {
+  return document.elementFromPoint(clientX, clientY)?.closest("#categoryList [data-pinned-category]") || null;
 }
 
 function updateUrl(update) {
@@ -1086,6 +1142,13 @@ function bindEvents() {
   });
 
   els.categoryList.addEventListener("click", (event) => {
+    if (suppressCategoryClick) {
+      suppressCategoryClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     const pin = event.target.closest("[data-pin-category]");
     if (pin) {
       event.preventDefault();
@@ -1100,6 +1163,71 @@ function bindEvents() {
     if (!row) return;
     filters.category = row.dataset.category;
     render();
+  });
+
+  els.categoryList.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest("[data-pin-category]")) return;
+    const row = event.target.closest("[data-pinned-category]");
+    if (!row) return;
+
+    categoryDrag = {
+      category: row.dataset.pinnedCategory,
+      didMove: false,
+      pointerId: event.pointerId,
+      row,
+      startY: event.clientY,
+      targetCategory: null,
+      targetPosition: null,
+    };
+    row.classList.add("is-dragging-category");
+    row.setPointerCapture(event.pointerId);
+  });
+
+  els.categoryList.addEventListener("pointermove", (event) => {
+    if (!categoryDrag || categoryDrag.pointerId !== event.pointerId) return;
+    if (!categoryDrag.didMove && Math.abs(event.clientY - categoryDrag.startY) < 4) return;
+
+    categoryDrag.didMove = true;
+    event.preventDefault();
+    clearCategoryDragState();
+
+    const target = categoryDropTarget(categoryRowFromPoint(event.clientX, event.clientY), event.clientY);
+    categoryDrag.targetCategory = target?.category || null;
+    categoryDrag.targetPosition = target?.position || null;
+    if (target) {
+      target.row.classList.add(target.position === "before" ? "category-drag-over-before" : "category-drag-over-after");
+    }
+  });
+
+  els.categoryList.addEventListener("pointerup", (event) => {
+    if (!categoryDrag || categoryDrag.pointerId !== event.pointerId) return;
+    const draggedCategory = categoryDrag.category;
+    const didMove = categoryDrag.didMove;
+    const pointerRow = categoryDrag.row;
+    const targetCategory = categoryDrag.targetCategory;
+    const targetPosition = categoryDrag.targetPosition;
+    const shouldReorder = didMove && targetCategory;
+    categoryDrag = null;
+    clearCategoryDraggingState();
+    if (pointerRow.hasPointerCapture(event.pointerId)) {
+      pointerRow.releasePointerCapture(event.pointerId);
+    }
+    if (didMove) {
+      suppressCategoryClick = true;
+    }
+    if (!shouldReorder) return;
+
+    reorderPinnedCategory(draggedCategory, targetCategory, targetPosition).catch((error) => {
+      showToast(error.message, "error");
+    });
+  });
+
+  els.categoryList.addEventListener("pointercancel", (event) => {
+    if (categoryDrag?.row?.hasPointerCapture(event.pointerId)) {
+      categoryDrag.row.releasePointerCapture(event.pointerId);
+    }
+    categoryDrag = null;
+    clearCategoryDraggingState();
   });
 
   els.channelList.addEventListener("click", async (event) => {

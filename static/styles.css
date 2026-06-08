@@ -409,6 +409,26 @@ button {
   background: linear-gradient(90deg, rgba(16, 183, 164, 0.34), rgba(16, 183, 164, 0.1));
 }
 
+.nav-row.pinned-category {
+  cursor: grab;
+}
+
+.nav-row.pinned-category:active {
+  cursor: grabbing;
+}
+
+.nav-row.is-dragging-category {
+  opacity: 0.55;
+}
+
+.nav-row.category-drag-over-before {
+  box-shadow: inset 0 3px 0 var(--teal);
+}
+
+.nav-row.category-drag-over-after {
+  box-shadow: inset 0 -3px 0 var(--teal);
+}
+
 .source-name,
 .nav-row > span:nth-child(2) {
   overflow: hidden;
