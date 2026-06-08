@@ -345,7 +345,7 @@ function filteredChannels() {
     .filter((channel) => filters.kind !== "favorites" || favorites.has(channel.id))
     .filter((channel) => {
       if (!search) return true;
-      return [channel.name, channel.group, sourceName(channel.source_id), channel.game?.text, channel.game?.status_long]
+      return [channel.name, channel.group, sourceName(channel.source_id), searchableGameText(channel)]
         .join(" ")
         .toLowerCase()
         .includes(search);
@@ -389,6 +389,18 @@ function gameInfo(channel) {
     status_long: "No game lookup",
     matched: false,
   };
+}
+
+function shouldShowGameInfo(game) {
+  if (!game) return false;
+  if (game.kind === "loading") return true;
+  if (game.kind === "stream") return false;
+  return game.matched !== false;
+}
+
+function searchableGameText(channel) {
+  const game = gameInfo(channel);
+  return shouldShowGameInfo(game) ? [game.text, game.status_long].join(" ") : "";
 }
 
 function orderedCategories() {
@@ -438,8 +450,10 @@ async function toggleCategoryPin(category) {
 }
 
 function compareGameStatus(leftChannel, rightChannel) {
-  const left = gameInfo(leftChannel);
-  const right = gameInfo(rightChannel);
+  const leftInfo = gameInfo(leftChannel);
+  const rightInfo = gameInfo(rightChannel);
+  const left = shouldShowGameInfo(leftInfo) ? leftInfo : { ...leftInfo, kind: "stream", text: "" };
+  const right = shouldShowGameInfo(rightInfo) ? rightInfo : { ...rightInfo, kind: "stream", text: "" };
   const leftRank = GAME_SORT_RANK[left.kind] ?? GAME_SORT_RANK.unknown;
   const rightRank = GAME_SORT_RANK[right.kind] ?? GAME_SORT_RANK.unknown;
   if (leftRank !== rightRank) return leftRank - rightRank;
@@ -457,6 +471,9 @@ function compareGameStatus(leftChannel, rightChannel) {
 
 function gameStatusHtml(channel) {
   const game = gameInfo(channel);
+  if (!shouldShowGameInfo(game)) {
+    return '<div class="game-status empty" aria-hidden="true"></div>';
+  }
   const subtext = game.score || game.subtext || game.start_time || "";
   return `
     <div class="game-status ${escapeHtml(game.kind)}" ${game.kind === "loading" ? 'aria-busy="true"' : ""}>
@@ -648,6 +665,10 @@ function renderDetail() {
   }
   const game = gameInfo(channel);
   const playerLabel = selectedPlayerLabel();
+  const gameMetaHtml = shouldShowGameInfo(game) ? `
+        ${detailMetaItem("Game", game.text, game.score || game.status_long)}
+        ${detailMetaItem("Start", game.start_time || (game.kind === "stream" ? "N/A" : "Unknown"))}
+  ` : "";
 
   els.detailPanel.innerHTML = `
     <div class="detail-content">
@@ -659,8 +680,7 @@ function renderDetail() {
         </div>
       </div>
       <div class="detail-meta">
-        ${detailMetaItem("Game", game.text, game.score || game.status_long)}
-        ${detailMetaItem("Start", game.start_time || (game.kind === "stream" ? "N/A" : "Unknown"))}
+        ${gameMetaHtml}
         ${detailMetaItem("Source", sourceName(channel.source_id))}
         ${detailMetaItem("Stream", streamType(channel.url))}
       </div>
