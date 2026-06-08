@@ -18,7 +18,7 @@ from .playlists import (
     upsert_url_source,
 )
 from .sports import channels_with_pending_games, enrich_channels_with_games
-from .state import api_sports_key, default_state, read_state, write_env_value, write_state
+from .state import api_sports_key, default_state, now_ts, read_state, write_env_value, write_state
 from .updates import UpdateError, can_install_updates, check_for_update, install_update
 from .version import APP_NAME, APP_VERSION, GITHUB_REPO_URL
 
@@ -201,6 +201,25 @@ def api_refresh_source(source_id: str):
         except Exception as exc:  # noqa: BLE001
             return json_error(f"Could not refresh source: {exc}")
         return jsonify({"success": True, "data": {"count": count, "state": public_state()}})
+
+
+@app.patch("/api/sources/<source_id>")
+def api_update_source(source_id: str):
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get("name", "")).strip()
+    if not name:
+        return json_error("Enter a playlist name.")
+
+    with state_lock:
+        state = read_state()
+        source = next((item for item in state["sources"] if item["id"] == source_id), None)
+        if source is None:
+            return json_error("Source not found.", 404)
+
+        source["name"] = name
+        source["updated_at"] = now_ts()
+        write_state(state)
+        return jsonify({"success": True, "data": {"source": source, "state": public_state()}})
 
 
 @app.delete("/api/sources/<source_id>")

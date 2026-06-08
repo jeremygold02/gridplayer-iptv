@@ -148,6 +148,28 @@
       </form>
     </div>
 
+    <div class="modal-backdrop" id="renameSourceModal" hidden>
+      <form class="modal rename-source-modal" id="renameSourceForm" role="dialog" aria-modal="true" aria-labelledby="renameSourceTitle">
+        <div class="modal-head">
+          <h2 id="renameSourceTitle">Rename Playlist</h2>
+          <button class="icon-button" data-close-modal type="button" title="Close">
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <label>
+          <span>Name</span>
+          <input id="renameSourceInput" type="text" autocomplete="off">
+        </label>
+        <div class="modal-actions">
+          <button class="secondary-button" data-close-modal type="button">Cancel</button>
+          <button class="primary-button" id="confirmRenameSourceButton" type="submit">
+            <span class="material-icons" aria-hidden="true">edit</span>
+            <span>Rename</span>
+          </button>
+        </div>
+      </form>
+    </div>
+
     <div class="modal-backdrop" id="removeSourceModal" hidden>
       <section class="modal remove-source-modal" role="dialog" aria-modal="true" aria-labelledby="removeSourceTitle">
         <div class="modal-head">

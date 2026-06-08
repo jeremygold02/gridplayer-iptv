@@ -419,7 +419,11 @@ button {
   justify-self: end;
 }
 
-.source-remove {
+.source-actions {
+  position: relative;
+}
+
+.source-menu-trigger {
   width: 26px;
   height: 26px;
   border-color: transparent;
@@ -427,20 +431,81 @@ button {
   color: var(--muted);
 }
 
-.source-remove .material-icons {
+.source-menu-trigger .material-icons {
   width: 16px;
   height: 16px;
   font-size: 16px;
 }
 
-.source-remove:hover {
-  border-color: rgba(255, 90, 95, 0.45);
-  background: rgba(255, 90, 95, 0.1);
+.source-menu-trigger:hover,
+.source-menu-trigger[aria-expanded="true"] {
+  border-color: rgba(16, 183, 164, 0.5);
+  background: rgba(16, 183, 164, 0.1);
+  color: var(--teal);
+}
+
+.source-menu {
+  position: absolute;
+  z-index: 90;
+  top: calc(100% + 4px);
+  right: 0;
+  display: grid;
+  min-width: 132px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111616;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.36);
+}
+
+.source-menu[hidden] {
+  display: none;
+}
+
+.source-menu button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.source-menu button:hover,
+.source-menu button:focus-visible {
+  background: #1a2322;
+  outline: 0;
+}
+
+.source-menu .material-icons {
+  width: 16px;
+  height: 16px;
+  color: var(--teal);
+  font-size: 16px;
+}
+
+.source-menu .danger-menu-item {
+  color: #ffd1d3;
+}
+
+.source-menu .danger-menu-item .material-icons {
   color: var(--red);
 }
 
+.source-menu .danger-menu-item:hover,
+.source-menu .danger-menu-item:focus-visible {
+  background: rgba(255, 90, 95, 0.1);
+}
+
 .source-select:focus-visible,
-.source-remove:focus-visible {
+.source-menu-trigger:focus-visible {
   outline: 1px solid rgba(16, 183, 164, 0.75);
   outline-offset: 1px;
 }

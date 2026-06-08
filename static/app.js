@@ -46,6 +46,7 @@ let apiKeyVisible = false;
 let launchUpdateChecked = false;
 let pendingUpdate = null;
 let pendingSourceRemovalId = null;
+let pendingSourceRenameId = null;
 let categoryDrag = null;
 let suppressCategoryClick = false;
 let lastChannelClick = {
@@ -642,9 +643,21 @@ function renderSources() {
           <span><span class="source-name">${escapeHtml(source.name)}</span><span class="source-meta">${source.channel_count || 0} channels</span></span>
           <span class="source-meta source-kind">${escapeHtml(source.kind)}</span>
         </button>
-        <button class="source-remove icon-button" data-source-remove-id="${escapeHtml(source.id)}" type="button" title="Remove playlist" aria-label="Remove ${escapeHtml(source.name)}">
-          ${iconHtml("delete")}
-        </button>
+        <div class="source-actions">
+          <button class="source-menu-trigger icon-button" data-source-menu-id="${escapeHtml(source.id)}" type="button" title="Playlist actions" aria-label="Actions for ${escapeHtml(source.name)}" aria-haspopup="menu" aria-expanded="false">
+            ${iconHtml("more_vert")}
+          </button>
+          <div class="source-menu" data-source-menu="${escapeHtml(source.id)}" role="menu" hidden>
+            <button data-source-rename-id="${escapeHtml(source.id)}" role="menuitem" type="button">
+              ${iconHtml("edit")}
+              <span>Rename</span>
+            </button>
+            <button class="danger-menu-item" data-source-remove-id="${escapeHtml(source.id)}" role="menuitem" type="button">
+              ${iconHtml("delete")}
+              <span>Delete</span>
+            </button>
+          </div>
+        </div>
       </div>
     `),
   ];
@@ -834,6 +847,40 @@ function showRemoveSourceDialog(sourceId) {
   openModal(els.removeSourceModal);
 }
 
+function showRenameSourceDialog(sourceId) {
+  const source = sourceById(sourceId);
+  if (!source) return;
+  pendingSourceRenameId = sourceId;
+  els.renameSourceInput.value = source.name;
+  els.confirmRenameSourceButton.disabled = false;
+  closeModals();
+  openModal(els.renameSourceModal);
+  els.renameSourceInput.select();
+}
+
+async function renamePendingSource() {
+  const sourceId = pendingSourceRenameId;
+  if (!sourceId) return;
+
+  const name = els.renameSourceInput.value.trim();
+  els.confirmRenameSourceButton.disabled = true;
+  try {
+    const data = await api(`/api/sources/${encodeURIComponent(sourceId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    });
+    setAppState(data.state, { preserveGames: true });
+    pendingSourceRenameId = null;
+    closeModals();
+    render();
+    showToast("Playlist renamed");
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    els.confirmRenameSourceButton.disabled = false;
+  }
+}
+
 async function removePendingSource() {
   const sourceId = pendingSourceRemovalId;
   if (!sourceId) return;
@@ -967,6 +1014,7 @@ function openModal(modal) {
 
 function closeModals() {
   els.urlModal.hidden = true;
+  els.renameSourceModal.hidden = true;
   els.removeSourceModal.hidden = true;
   els.settingsModal.hidden = true;
   els.aboutModal.hidden = true;
@@ -980,6 +1028,22 @@ function setImportMenuOpen(open) {
 
 function closeImportMenu() {
   setImportMenuOpen(false);
+}
+
+function closeSourceMenus(exceptSourceId = null) {
+  document.querySelectorAll("[data-source-menu]").forEach((menu) => {
+    const isExcepted = exceptSourceId && menu.dataset.sourceMenu === exceptSourceId;
+    menu.hidden = !isExcepted;
+  });
+  document.querySelectorAll("[data-source-menu-id]").forEach((button) => {
+    button.setAttribute("aria-expanded", String(Boolean(exceptSourceId && button.dataset.sourceMenuId === exceptSourceId)));
+  });
+}
+
+function toggleSourceMenu(sourceId) {
+  const menu = [...document.querySelectorAll("[data-source-menu]")]
+    .find((item) => item.dataset.sourceMenu === sourceId);
+  closeSourceMenus(menu?.hidden ? sourceId : null);
 }
 
 function bindEvents() {
@@ -1002,11 +1066,15 @@ function bindEvents() {
     if (!event.target.closest(".import-dropdown")) {
       closeImportMenu();
     }
+    if (!event.target.closest(".source-actions")) {
+      closeSourceMenus();
+    }
   });
 
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeImportMenu();
+      closeSourceMenus();
     }
   });
 
@@ -1044,6 +1112,10 @@ function bindEvents() {
   });
 
   els.updateInstallButton.addEventListener("click", installPendingUpdate);
+  els.renameSourceForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    renamePendingSource();
+  });
   els.confirmRemoveSourceButton.addEventListener("click", removePendingSource);
 
   els.fileInput.addEventListener("change", async () => {
@@ -1169,10 +1241,28 @@ function bindEvents() {
   });
 
   els.sourceList.addEventListener("click", (event) => {
+    const menuButton = event.target.closest("[data-source-menu-id]");
+    if (menuButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleSourceMenu(menuButton.dataset.sourceMenuId);
+      return;
+    }
+
+    const renameButton = event.target.closest("[data-source-rename-id]");
+    if (renameButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeSourceMenus();
+      showRenameSourceDialog(renameButton.dataset.sourceRenameId);
+      return;
+    }
+
     const removeButton = event.target.closest("[data-source-remove-id]");
     if (removeButton) {
       event.preventDefault();
       event.stopPropagation();
+      closeSourceMenus();
       showRemoveSourceDialog(removeButton.dataset.sourceRemoveId);
       return;
     }
@@ -1327,7 +1417,8 @@ function initEls() {
     "playerSelect", "zoomOutButton", "zoomValue", "zoomInButton", "sidebarResizer",
     "sourceList", "allCount", "favoriteCount", "liveGamesFilter", "liveGameCount", "categoryList", "resultCount",
     "searchInput", "channelList", "detailPanel", "fileInput", "urlModal",
-    "urlForm", "urlNameInput", "urlInput", "removeSourceModal", "removeSourceName",
+    "urlForm", "urlNameInput", "urlInput", "renameSourceModal", "renameSourceForm", "renameSourceInput",
+    "confirmRenameSourceButton", "removeSourceModal", "removeSourceName",
     "confirmRemoveSourceButton", "settingsModal", "settingsForm",
     "gridplayerPathInput", "mpvPathInput", "vlcPathInput", "apiSportsKeyInput",
     "toggleApiKeyButton", "aboutButton", "aboutModal", "aboutVersion", "aboutRepoLink",
