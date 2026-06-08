@@ -564,6 +564,13 @@ button {
   text-transform: uppercase;
 }
 
+.table-header > :last-child {
+  justify-self: end;
+  width: 63px;
+  margin-right: 4px;
+  text-align: center;
+}
+
 .sort-header {
   display: inline-flex;
   align-items: center;
@@ -1173,6 +1180,11 @@ button {
 
   .table-header {
     padding-inline: 12px;
+  }
+
+  .table-header > :last-child {
+    width: 69px;
+    margin-right: 0;
   }
 
   .channel-row {
