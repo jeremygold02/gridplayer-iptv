@@ -132,6 +132,32 @@
           <div class="detail-empty">Click on a channel to view more info</div>
         </aside>
       </main>
+      <footer class="recording-footer" id="recordingFooter" hidden>
+        <div class="recording-footer-main">
+          <span class="material-icons recording-dot" id="recordingFooterIcon" aria-hidden="true">download</span>
+          <div>
+            <strong id="recordingFooterTitle">Recording</strong>
+            <span id="recordingFooterMeta" role="status" aria-live="polite">00:00 · Source</span>
+          </div>
+        </div>
+        <div class="recording-footer-actions">
+          <button class="secondary-button" id="recordingOpenButton" type="button">
+            <span class="material-icons" aria-hidden="true">play_circle</span>
+            <span>Open File</span>
+          </button>
+          <button class="secondary-button" id="recordingRevealButton" type="button">
+            <span class="material-icons" aria-hidden="true">folder_open</span>
+            <span>Reveal Folder</span>
+          </button>
+          <button class="primary-button danger-button" id="recordingStopButton" type="button">
+            <span class="material-icons" aria-hidden="true">stop_circle</span>
+            <span>Stop</span>
+          </button>
+          <button class="icon-button recording-dismiss-button" id="recordingDismissButton" type="button" title="Close recording footer" aria-label="Close recording footer">
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+      </footer>
     </div>
 
     <input id="fileInput" type="file" accept=".m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain" hidden>
@@ -232,48 +258,94 @@
     </div>
 
     <div class="modal-backdrop" id="settingsModal" hidden>
-      <form class="modal" id="settingsForm">
+      <form class="modal settings-modal" id="settingsForm">
         <div class="modal-head">
           <h2>Settings</h2>
           <button class="icon-button" data-close-modal type="button" title="Close">
             <span class="material-icons" aria-hidden="true">close</span>
           </button>
         </div>
-        <div class="modal-field">
-          <span id="gridplayerPathLabel">GridPlayer executable</span>
-          <div class="path-input-row">
-            <input id="gridplayerPathInput" type="text" placeholder="Select or paste path to GridPlayer.exe" aria-labelledby="gridplayerPathLabel">
-            <button class="icon-button" data-player-path-picker="gridplayer" type="button" title="Browse for GridPlayer executable" aria-label="Browse for GridPlayer executable">
-              <span class="material-icons" aria-hidden="true">folder_open</span>
-            </button>
+        <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+          <button class="settings-tab active" id="settingsGeneralTab" data-settings-tab="general" type="button" role="tab" aria-selected="true" aria-controls="settingsGeneralPanel">
+            General
+          </button>
+          <button class="settings-tab" id="settingsRecordingTab" data-settings-tab="recording" type="button" role="tab" aria-selected="false" aria-controls="settingsRecordingPanel">
+            Recording
+          </button>
+        </div>
+        <div class="settings-panel" id="settingsGeneralPanel" data-settings-panel="general" role="tabpanel" aria-labelledby="settingsGeneralTab">
+          <div class="modal-field">
+            <span id="gridplayerPathLabel">GridPlayer executable</span>
+            <div class="path-input-row">
+              <input id="gridplayerPathInput" type="text" placeholder="Select or paste path to GridPlayer.exe" aria-labelledby="gridplayerPathLabel">
+              <button class="icon-button" data-player-path-picker="gridplayer" type="button" title="Browse for GridPlayer executable" aria-label="Browse for GridPlayer executable">
+                <span class="material-icons" aria-hidden="true">folder_open</span>
+              </button>
+            </div>
+          </div>
+          <div class="modal-field">
+            <span id="mpvPathLabel">MPV executable</span>
+            <div class="path-input-row">
+              <input id="mpvPathInput" type="text" placeholder="Select or paste path to mpv.exe" aria-labelledby="mpvPathLabel">
+              <button class="icon-button" data-player-path-picker="mpv" type="button" title="Browse for MPV executable" aria-label="Browse for MPV executable">
+                <span class="material-icons" aria-hidden="true">folder_open</span>
+              </button>
+            </div>
+          </div>
+          <div class="modal-field">
+            <span id="vlcPathLabel">VLC executable</span>
+            <div class="path-input-row">
+              <input id="vlcPathInput" type="text" placeholder="Select or paste path to vlc.exe" aria-labelledby="vlcPathLabel">
+              <button class="icon-button" data-player-path-picker="vlc" type="button" title="Browse for VLC executable" aria-label="Browse for VLC executable">
+                <span class="material-icons" aria-hidden="true">folder_open</span>
+              </button>
+            </div>
+          </div>
+          <div class="modal-field">
+            <span>API-Sports key</span>
+            <div class="secret-input-row">
+              <input id="apiSportsKeyInput" type="password" placeholder="API_SPORTS_KEY" autocomplete="off" spellcheck="false" aria-label="API-Sports key">
+              <button class="icon-button" id="toggleApiKeyButton" type="button" title="Show API key" aria-label="Show API key" aria-pressed="false">
+                <span class="material-icons" aria-hidden="true">visibility</span>
+              </button>
+            </div>
           </div>
         </div>
-        <div class="modal-field">
-          <span id="mpvPathLabel">MPV executable</span>
-          <div class="path-input-row">
-            <input id="mpvPathInput" type="text" placeholder="Select or paste path to mpv.exe" aria-labelledby="mpvPathLabel">
-            <button class="icon-button" data-player-path-picker="mpv" type="button" title="Browse for MPV executable" aria-label="Browse for MPV executable">
-              <span class="material-icons" aria-hidden="true">folder_open</span>
+        <div class="settings-panel" id="settingsRecordingPanel" data-settings-panel="recording" role="tabpanel" aria-labelledby="settingsRecordingTab" hidden>
+          <div class="recording-status-card">
+            <span class="material-icons" aria-hidden="true">download</span>
+            <div>
+              <strong id="ffmpegStatusTitle">FFmpeg status</strong>
+              <span id="ffmpegStatusText">Checking...</span>
+            </div>
+            <button class="secondary-button" id="installFfmpegSettingsButton" type="button">
+              <span class="material-icons" aria-hidden="true">download</span>
+              <span>Download FFmpeg</span>
             </button>
           </div>
-        </div>
-        <div class="modal-field">
-          <span id="vlcPathLabel">VLC executable</span>
-          <div class="path-input-row">
-            <input id="vlcPathInput" type="text" placeholder="Select or paste path to vlc.exe" aria-labelledby="vlcPathLabel">
-            <button class="icon-button" data-player-path-picker="vlc" type="button" title="Browse for VLC executable" aria-label="Browse for VLC executable">
-              <span class="material-icons" aria-hidden="true">folder_open</span>
-            </button>
+          <div class="modal-field">
+            <span id="ffmpegPathLabel">FFmpeg executable</span>
+            <div class="path-input-row">
+              <input id="ffmpegPathInput" type="text" placeholder="Select or paste path to ffmpeg.exe" aria-labelledby="ffmpegPathLabel">
+              <button class="icon-button" id="ffmpegPathPickerButton" type="button" title="Browse for FFmpeg executable" aria-label="Browse for FFmpeg executable">
+                <span class="material-icons" aria-hidden="true">folder_open</span>
+              </button>
+            </div>
           </div>
-        </div>
-        <div class="modal-field">
-          <span>API-Sports key</span>
-          <div class="secret-input-row">
-            <input id="apiSportsKeyInput" type="password" placeholder="API_SPORTS_KEY" autocomplete="off" spellcheck="false" aria-label="API-Sports key">
-            <button class="icon-button" id="toggleApiKeyButton" type="button" title="Show API key" aria-label="Show API key" aria-pressed="false">
-              <span class="material-icons" aria-hidden="true">visibility</span>
-            </button>
+          <div class="modal-field">
+            <span id="recordingDirLabel">Recording folder</span>
+            <div class="path-input-row">
+              <input id="recordingDirInput" type="text" placeholder="Select or paste recording folder" aria-labelledby="recordingDirLabel">
+              <button class="icon-button" id="recordingDirPickerButton" type="button" title="Browse for recording folder" aria-label="Browse for recording folder">
+                <span class="material-icons" aria-hidden="true">folder_open</span>
+              </button>
+            </div>
           </div>
+          <label>
+            <span>Default source quality</span>
+            <select id="recordingDefaultQualitySelect" aria-label="Default recording source quality"></select>
+          </label>
+          <p class="modal-copy">Recordings are saved as TS using source copy. Quality selection chooses an existing stream variant when the source exposes one.</p>
         </div>
         <div class="modal-actions settings-actions">
           <button class="secondary-button" id="aboutButton" type="button">
@@ -286,6 +358,104 @@
           </div>
         </div>
       </form>
+    </div>
+
+    <div class="modal-backdrop" id="ffmpegModal" hidden>
+      <section class="modal ffmpeg-modal" role="dialog" aria-modal="true" aria-labelledby="ffmpegModalTitle">
+        <div class="modal-head">
+          <h2 id="ffmpegModalTitle">FFmpeg Required</h2>
+          <button class="icon-button" data-close-modal type="button" title="Close">
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <p class="modal-copy" id="ffmpegModalMessage">FFmpeg is not installed or was not found on PATH.</p>
+        <div class="update-status" id="ffmpegInstallStatus" role="status" aria-live="polite"></div>
+        <div class="modal-actions">
+          <button class="secondary-button" id="browseFfmpegModalButton" type="button">
+            <span class="material-icons" aria-hidden="true">folder_open</span>
+            <span>Browse</span>
+          </button>
+          <button class="primary-button" id="installFfmpegModalButton" type="button">
+            <span class="material-icons" aria-hidden="true">download</span>
+            <span>Download FFmpeg</span>
+          </button>
+          <button class="secondary-button" data-close-modal type="button">Cancel</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="recordingOptionsModal" hidden>
+      <section class="modal recording-options-modal" role="dialog" aria-modal="true" aria-labelledby="recordingOptionsTitle">
+        <div class="modal-head">
+          <h2 id="recordingOptionsTitle">Recording Options</h2>
+          <button class="icon-button" data-close-modal type="button" title="Close">
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <div class="quality-channel-name" id="recordingOptionsChannel">Channel</div>
+        <div class="modal-field">
+          <span id="recordingOptionDirLabel">Recording folder</span>
+          <div class="path-input-row">
+            <input id="recordingOptionDirInput" type="text" placeholder="Select or paste recording folder" aria-labelledby="recordingOptionDirLabel">
+            <button class="icon-button" id="recordingOptionDirPickerButton" type="button" title="Browse for recording folder" aria-label="Browse for recording folder">
+              <span class="material-icons" aria-hidden="true">folder_open</span>
+            </button>
+          </div>
+        </div>
+        <label>
+          <span>Source quality</span>
+          <select id="recordingOptionQualitySelect" aria-label="Recording source quality"></select>
+        </label>
+        <div class="modal-actions">
+          <button class="secondary-button" data-close-modal type="button">Cancel</button>
+          <button class="primary-button" id="confirmRecordingOptionsButton" type="button">
+            <span class="material-icons" aria-hidden="true">download</span>
+            <span>Record</span>
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="recordingQualityModal" hidden>
+      <section class="modal recording-quality-modal" role="dialog" aria-modal="true" aria-labelledby="recordingQualityTitle">
+        <div class="modal-head">
+          <h2 id="recordingQualityTitle">Choose Recording Quality</h2>
+          <button class="icon-button" data-close-modal type="button" title="Close">
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <div class="quality-channel-name" id="recordingQualityChannel">Channel</div>
+        <label>
+          <span>Source quality</span>
+          <select id="recordingQualitySelect"></select>
+        </label>
+        <div class="modal-actions">
+          <button class="secondary-button" data-close-modal type="button">Cancel</button>
+          <button class="primary-button" id="startRecordingQualityButton" type="button">
+            <span class="material-icons" aria-hidden="true">download</span>
+            <span>Start Recording</span>
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="recordingDismissModal" hidden>
+      <section class="modal recording-dismiss-modal" role="dialog" aria-modal="true" aria-labelledby="recordingDismissTitle">
+        <div class="modal-head">
+          <h2 id="recordingDismissTitle">Stop Recording?</h2>
+          <button class="icon-button" data-close-modal type="button" title="Close">
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <p class="modal-copy">Closing the recording footer will stop the active recording.</p>
+        <div class="modal-actions">
+          <button class="secondary-button" data-close-modal type="button">Cancel</button>
+          <button class="primary-button danger-button" id="confirmDismissRecordingButton" type="button">
+            <span class="material-icons" aria-hidden="true">stop_circle</span>
+            <span>Stop and Close</span>
+          </button>
+        </div>
+      </section>
     </div>
 
     <div class="modal-backdrop" id="aboutModal" hidden>

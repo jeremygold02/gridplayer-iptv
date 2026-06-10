@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import threading
 from typing import Any
+import urllib.error
 
 from flask import Flask, jsonify, render_template, request, send_file
 
@@ -16,6 +17,15 @@ from .playlists import (
     source_content,
     upsert_file_source,
     upsert_url_source,
+)
+from .recording import (
+    FfmpegInstallError,
+    FfmpegMissingError,
+    RecordingError,
+    install_ffmpeg,
+    public_recording_config,
+    recording_manager,
+    sanitize_recording_quality,
 )
 from .sports import channels_with_pending_games, enrich_channels_with_games
 from .state import api_sports_key, default_state, now_ts, read_state, write_env_value, write_state
@@ -88,6 +98,10 @@ def public_state(state: dict[str, Any] | None = None, enrich_games: bool = False
             "available": bool(gridplayer and gridplayer["available"]),
             "path": gridplayer["path"] if gridplayer else "",
         },
+        "recording": {
+            **public_recording_config(settings),
+            "status": recording_manager.status(),
+        },
         "runtime": {
             "desktop": config.DESKTOP_MODE,
             "can_install_updates": can_install_updates(),
@@ -97,6 +111,21 @@ def public_state(state: dict[str, Any] | None = None, enrich_games: bool = False
 
 def json_error(message: str, status: int = 400):
     return jsonify({"success": False, "error": message}), status
+
+
+def recording_settings_from_payload(settings: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    overrides = payload.get("recording_options")
+    if not isinstance(overrides, dict):
+        overrides = {}
+
+    next_settings = dict(settings)
+    if "ffmpeg_path" in overrides:
+        next_settings["ffmpeg_path"] = str(overrides.get("ffmpeg_path") or "").strip()
+    if "recording_dir" in overrides:
+        next_settings["recording_dir"] = str(overrides.get("recording_dir") or "").strip()
+    if "recording_default_quality" in overrides:
+        next_settings["recording_default_quality"] = sanitize_recording_quality(overrides.get("recording_default_quality"))
+    return next_settings
 
 
 @app.get("/")
@@ -335,6 +364,79 @@ def api_open_channel():
         return jsonify({"success": True, "data": {"path": str(executable), "player": player, "label": player_label(player)}})
 
 
+@app.get("/api/recording/status")
+def api_recording_status():
+    return jsonify({"success": True, "data": recording_manager.status()})
+
+
+@app.post("/api/recording/prepare")
+def api_recording_prepare():
+    payload = request.get_json(silent=True) or {}
+    channel_id = str(payload.get("channel_id", "")).strip()
+    with state_lock:
+        state = read_state()
+        channel = state["channels"].get(channel_id)
+        if channel is None:
+            return json_error("Channel not found.", 404)
+        settings = recording_settings_from_payload(state["settings"], payload)
+    try:
+        data = recording_manager.prepare(channel, settings)
+        return jsonify({"success": True, "data": data})
+    except RecordingError as exc:
+        return json_error(str(exc))
+    except Exception as exc:  # noqa: BLE001
+        return json_error(f"Could not prepare recording: {exc}", 502)
+
+
+@app.post("/api/recording/start")
+def api_recording_start():
+    payload = request.get_json(silent=True) or {}
+    channel_id = str(payload.get("channel_id", "")).strip()
+    quality_id = str(payload.get("quality_id", "") or "").strip() or None
+    with state_lock:
+        state = read_state()
+        channel = state["channels"].get(channel_id)
+        if channel is None:
+            return json_error("Channel not found.", 404)
+        settings = recording_settings_from_payload(state["settings"], payload)
+    try:
+        return jsonify({"success": True, "data": recording_manager.start(channel, settings, quality_id)})
+    except FfmpegMissingError as exc:
+        return json_error(str(exc), 409)
+    except RecordingError as exc:
+        return json_error(str(exc))
+    except Exception as exc:  # noqa: BLE001
+        return json_error(f"Could not start recording: {exc}", 502)
+
+
+@app.post("/api/recording/stop")
+def api_recording_stop():
+    try:
+        return jsonify({"success": True, "data": recording_manager.stop()})
+    except Exception as exc:  # noqa: BLE001
+        return json_error(f"Could not stop recording: {exc}", 502)
+
+
+@app.post("/api/recording/open")
+def api_recording_open():
+    payload = request.get_json(silent=True) or {}
+    with state_lock:
+        state = read_state()
+        settings = state["settings"]
+    try:
+        return jsonify({"success": True, "data": recording_manager.open_recording(settings, payload.get("player"))})
+    except Exception as exc:  # noqa: BLE001
+        return json_error(str(exc))
+
+
+@app.post("/api/recording/reveal")
+def api_recording_reveal():
+    try:
+        return jsonify({"success": True, "data": recording_manager.reveal_recording()})
+    except Exception as exc:  # noqa: BLE001
+        return json_error(str(exc))
+
+
 @app.post("/api/open-queue")
 def api_open_queue():
     with state_lock:
@@ -407,6 +509,93 @@ def api_select_player_executable():
     return jsonify({"success": True, "data": {"path": str(selected_path), "player": player}})
 
 
+@app.post("/api/select-ffmpeg-executable")
+def api_select_ffmpeg_executable():
+    if not config.DESKTOP_MODE:
+        return json_error("The file picker is available in the desktop app.")
+
+    try:
+        import webview
+    except ImportError:
+        return json_error("The file picker is unavailable because pywebview is not installed.")
+
+    windows = getattr(webview, "windows", [])
+    if not windows:
+        return json_error("The app window is not ready.")
+
+    try:
+        file_dialog = getattr(webview, "FileDialog", None)
+        dialog_type = file_dialog.OPEN if file_dialog else webview.OPEN_DIALOG
+        selection = windows[0].create_file_dialog(
+            dialog_type,
+            allow_multiple=False,
+            file_types=("Executable files (*.exe)", "All files (*.*)"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        return json_error(f"Could not open file picker: {exc}")
+
+    if not selection:
+        return jsonify({"success": True, "data": {"path": ""}})
+
+    selected_path = Path(selection[0])
+    if selected_path.suffix.lower() != ".exe":
+        return json_error("Choose an .exe file.")
+    if not selected_path.is_file():
+        return json_error("Selected file was not found.")
+
+    return jsonify({"success": True, "data": {"path": str(selected_path)}})
+
+
+@app.post("/api/select-recording-directory")
+def api_select_recording_directory():
+    if not config.DESKTOP_MODE:
+        return json_error("The folder picker is available in the desktop app.")
+
+    try:
+        import webview
+    except ImportError:
+        return json_error("The folder picker is unavailable because pywebview is not installed.")
+
+    windows = getattr(webview, "windows", [])
+    if not windows:
+        return json_error("The app window is not ready.")
+
+    try:
+        file_dialog = getattr(webview, "FileDialog", None)
+        dialog_type = getattr(file_dialog, "FOLDER", None) if file_dialog else getattr(webview, "FOLDER_DIALOG", None)
+        if dialog_type is None:
+            return json_error("The folder picker is unavailable in this pywebview version.")
+        selection = windows[0].create_file_dialog(dialog_type, allow_multiple=False)
+    except Exception as exc:  # noqa: BLE001
+        return json_error(f"Could not open folder picker: {exc}")
+
+    if not selection:
+        return jsonify({"success": True, "data": {"path": ""}})
+
+    selected_path = Path(selection[0])
+    if not selected_path.is_dir():
+        return json_error("Selected folder was not found.")
+
+    return jsonify({"success": True, "data": {"path": str(selected_path)}})
+
+
+@app.post("/api/ffmpeg/install")
+def api_ffmpeg_install():
+    try:
+        info = install_ffmpeg()
+    except FfmpegInstallError as exc:
+        return json_error(str(exc), 502)
+    except Exception as exc:  # noqa: BLE001
+        return json_error(f"Could not install FFmpeg: {exc}", 502)
+
+    with state_lock:
+        state = read_state()
+        settings = state.setdefault("settings", default_state()["settings"])
+        settings["ffmpeg_path"] = info.ffmpeg_path
+        write_state(state)
+        return jsonify({"success": True, "data": {"ffmpeg": info.__dict__, "state": public_state()}})
+
+
 @app.post("/api/settings")
 def api_settings():
     payload = request.get_json(silent=True) or {}
@@ -416,6 +605,9 @@ def api_settings():
         "gridplayer_path",
         "mpv_path",
         "vlc_path",
+        "ffmpeg_path",
+        "recording_dir",
+        "recording_default_quality",
         "auto_open_queue",
         "ui_zoom",
         "ui_sidebar_width",
@@ -431,7 +623,11 @@ def api_settings():
             if key in payload:
                 if key == "selected_player":
                     settings[key] = normalize_player_id(payload[key])
+                elif key == "recording_default_quality":
+                    settings[key] = sanitize_recording_quality(payload[key])
                 elif key.endswith("_path"):
+                    settings[key] = str(payload[key] or "").strip()
+                elif key == "recording_dir":
                     settings[key] = str(payload[key] or "").strip()
                 elif key == "pinned_categories":
                     categories = payload.get(key) if isinstance(payload.get(key), list) else []

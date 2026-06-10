@@ -28,11 +28,13 @@ const BUILT_IN_FILTER_PRESET_IDS = {
   nba: "nba",
 };
 const API_REQUEST_POLICIES = {
+  "GET /api/recording/status": "share",
   "GET /api/update/check": "share",
   "GET /api/update-check": "share",
   "POST /api/refresh": "share",
   "POST /api/sports/refresh": "share",
   "POST /api/update/install": "share",
+  "POST /api/recording/stop": "share",
   "POST /api/settings": "queue",
 };
 let appState = null;
@@ -53,9 +55,13 @@ let uiPrefs = {
 };
 let sidebarResize = null;
 let sportsRefreshTimer = null;
+let recordingStatusTimer = null;
 let apiKeyVisible = false;
 let launchUpdateChecked = false;
 let pendingUpdate = null;
+let recordingState = { active: false };
+let recordingFooterDismissed = false;
+let pendingRecording = null;
 let pendingSourceRemovalId = null;
 let pendingSourceRenameId = null;
 let categoryDrag = null;
@@ -196,7 +202,16 @@ async function performApiRequest(path, options = {}, headers = undefined) {
       ...(headers || {}),
     },
   });
-  const payload = await response.json();
+  const text = await response.text();
+  let payload;
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(`Request returned ${response.status} ${response.statusText || "non-JSON response"}.`);
+  }
+  if (!response.ok) {
+    throw new Error(payload.error || `Request returned ${response.status} ${response.statusText || "error"}.`);
+  }
   if (!payload.success) {
     throw new Error(payload.error || "Request failed");
   }
@@ -259,6 +274,7 @@ async function loadState() {
   hydrateUiPrefs();
   render();
   scheduleSportsRefresh();
+  scheduleRecordingStatusRefresh();
   checkForLaunchUpdate();
   refreshPlaylistData({ refreshSports: true });
 }
@@ -289,6 +305,9 @@ function mergeGameState(nextState) {
 
 function setAppState(nextState, options = {}) {
   appState = options.preserveGames ? mergeGameState(nextState) : nextState;
+  if (nextState?.recording?.status) {
+    setRecordingStatus(nextState.recording.status);
+  }
   applyPinnedCategoryPrefs();
 }
 
@@ -712,6 +731,133 @@ function streamType(url) {
   return "URL";
 }
 
+function recordingConfig() {
+  return appState?.recording || {};
+}
+
+function ffmpegStatus() {
+  return recordingConfig().ffmpeg || { available: false, message: "FFmpeg status unavailable." };
+}
+
+function recordingQualityPresets() {
+  return recordingConfig().quality_presets || [
+    { id: "best", label: "Best" },
+    { id: "2160", label: "4K or lower" },
+    { id: "1440", label: "1440p or lower" },
+    { id: "1080", label: "1080p or lower" },
+    { id: "720", label: "720p or lower" },
+    { id: "480", label: "480p or lower" },
+    { id: "lowest", label: "Lowest" },
+  ];
+}
+
+function recordingPathValue() {
+  return appState?.settings?.recording_dir || recordingConfig().effective_dir || recordingConfig().default_dir || "";
+}
+
+function formatElapsed(seconds) {
+  const value = Math.max(0, Number(seconds) || 0);
+  const hours = Math.floor(value / 3600);
+  const minutes = Math.floor((value % 3600) / 60);
+  const secs = Math.floor(value % 60);
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+  return `${minutes}:${String(secs).padStart(2, "0")}`;
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value >= 1024 * 1024 * 1024) return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  if (value >= 1024) return `${Math.round(value / 1024)} KB`;
+  return `${value} B`;
+}
+
+function isRecordingChannel(channelId) {
+  return Boolean(recordingState?.active && recordingState.channel_id === channelId);
+}
+
+function recordingBlocksChannel(channelId) {
+  return Boolean(recordingState?.active && recordingState.channel_id !== channelId);
+}
+
+function recordingButtonHtml(channelId, compact = true) {
+  const isActive = isRecordingChannel(channelId);
+  const blocked = recordingBlocksChannel(channelId);
+  const title = isActive ? "Stop recording" : "Record stream";
+  const buttonClass = compact ? "icon-button record-button" : "secondary-button record-button detail-record-button";
+  return `
+    <button class="${buttonClass} ${isActive ? "active" : ""}" data-${compact ? "action" : "detail-action"}="record" title="${title}" type="button" ${blocked ? "disabled" : ""}>
+      ${iconHtml(isActive ? "stop_circle" : "download")}
+      ${compact ? "" : `<span>${isActive ? "Stop Recording" : "Record"}</span>`}
+    </button>
+  `;
+}
+
+function recordingStatusKind(status = recordingState) {
+  return status?.state || (status?.active ? "recording" : "idle");
+}
+
+function recordingStatusKey(status = recordingState) {
+  return [
+    recordingStatusKind(status),
+    status?.active ? "active" : "inactive",
+    status?.channel_id || "",
+    status?.output_path || "",
+    status?.message || "",
+  ].join("|");
+}
+
+function recordingFooterShouldShow(status = recordingState) {
+  if (recordingFooterDismissed) return false;
+  const state = recordingStatusKind(status);
+  return Boolean(status?.active || ["preparing", "starting", "waiting", "error", "stopped"].includes(state));
+}
+
+function recordingStatusCanShow(status = recordingState) {
+  const state = recordingStatusKind(status);
+  return Boolean(status?.active || ["preparing", "starting", "waiting", "error", "stopped"].includes(state));
+}
+
+function setRecordingStatus(status, options = {}) {
+  const previousKey = recordingStatusKey();
+  const nextStatus = status || { active: false, state: "idle" };
+  if (!options.force && recordingStatusKind(nextStatus) === "idle" && recordingStatusCanShow(recordingState) && !recordingState.active) {
+    return;
+  }
+  recordingState = nextStatus;
+  if (options.show || nextStatus.active || (recordingStatusKey(nextStatus) !== previousKey && recordingStatusCanShow(nextStatus))) {
+    recordingFooterDismissed = false;
+  }
+}
+
+function setLocalRecordingStatus(channelId, state, message, extra = {}) {
+  const channel = channelById(channelId);
+  setRecordingStatus({
+    active: false,
+    local: true,
+    state,
+    message,
+    channel_id: channelId,
+    channel_name: channel?.name || "Recording",
+    quality_id: extra.quality_id || "",
+    quality_label: extra.quality_label || "",
+    output_path: extra.output_path || "",
+    elapsed_seconds: 0,
+    size_bytes: 0,
+    ...extra,
+  }, { show: true });
+  render();
+}
+
+function shouldKeepLocalRecordingStatus(serverStatus) {
+  if (!recordingState?.local || serverStatus?.active) return false;
+  const localState = recordingStatusKind(recordingState);
+  if (!["preparing", "starting", "waiting", "error"].includes(localState)) return false;
+  return true;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -733,6 +879,7 @@ function render() {
   renderCategories();
   renderChannels();
   renderDetail();
+  renderRecordingFooter();
 }
 
 function renderSortHeaders() {
@@ -915,6 +1062,7 @@ function renderChannels() {
           <button class="icon-button favorite-button ${isFavorite ? "active" : ""}" data-action="favorite" title="${isFavorite ? "Remove favorite" : "Favorite"}" type="button">
             ${iconHtml(isFavorite ? "favorite" : "favorite_border")}
           </button>
+          ${recordingButtonHtml(channel.id)}
           <button class="icon-button" data-action="open" title="Open in ${escapeHtml(playerLabel)}" type="button">
             ${iconHtml("open_in_new")}
           </button>
@@ -952,6 +1100,7 @@ function renderDetail() {
         ${detailMetaItem("Stream", streamType(channel.url))}
       </div>
       <div class="detail-actions" data-channel-id="${channel.id}">
+        ${recordingButtonHtml(channel.id, false)}
         <button class="primary-button" data-detail-action="open" type="button">
           ${iconHtml("open_in_new")}
           <span>Open in ${escapeHtml(playerLabel)}</span>
@@ -979,13 +1128,293 @@ async function openChannel(channelId) {
   showToast(`Opened in ${data.label || selectedPlayerLabel()}`);
 }
 
+function renderRecordingFooter() {
+  const state = recordingStatusKind();
+  const active = Boolean(recordingState?.active);
+  const visible = recordingFooterShouldShow();
+  const hasFile = Boolean(recordingState?.output_path);
+  const hasRevealPath = hasFile;
+  document.body.classList.toggle("recording-active", active);
+  document.body.classList.toggle("recording-footer-visible", visible);
+  els.recordingFooter.hidden = !visible;
+  if (!visible) return;
+
+  els.recordingFooter.classList.toggle("preparing", ["preparing", "starting", "waiting"].includes(state));
+  els.recordingFooter.classList.toggle("error", state === "error");
+  els.recordingFooter.classList.toggle("stopped", state === "stopped");
+  els.recordingFooter.classList.toggle("active", active);
+  els.recordingFooterIcon.textContent = state === "error" ? "error" : (state === "stopped" ? "check_circle" : "download");
+
+  const stateTitle = {
+    preparing: "Preparing Recording",
+    starting: "Starting Recording",
+    waiting: "Recording Ready",
+    error: "Recording Error",
+    stopped: "Recording Stopped",
+    recording: "Recording",
+  }[state] || "Recording";
+  els.recordingFooterTitle.textContent = `${stateTitle}: ${recordingState.channel_name || "Stream"}`;
+
+  const metaParts = [];
+  if (recordingState.message && state !== "recording") {
+    metaParts.push(recordingState.message);
+  }
+  if (active || state === "stopped" || hasFile) {
+    metaParts.push(formatElapsed(recordingState.elapsed_seconds));
+    metaParts.push(recordingState.quality_label || "Source");
+    metaParts.push(formatBytes(recordingState.size_bytes));
+  }
+  els.recordingFooterMeta.textContent = metaParts.filter(Boolean).join(" · ");
+  els.recordingOpenButton.disabled = !hasFile;
+  els.recordingRevealButton.disabled = !hasRevealPath;
+  els.recordingStopButton.hidden = !active;
+}
+
+async function refreshRecordingStatus() {
+  try {
+    const status = await api("/api/recording/status");
+    if (shouldKeepLocalRecordingStatus(status)) {
+      renderChannels();
+      renderDetail();
+      renderRecordingFooter();
+      return recordingState;
+    }
+    setRecordingStatus(status);
+    renderChannels();
+    renderDetail();
+    renderRecordingFooter();
+    return recordingState;
+  } catch {
+    return recordingState;
+  }
+}
+
+function scheduleRecordingStatusRefresh() {
+  window.clearInterval(recordingStatusTimer);
+  recordingStatusTimer = window.setInterval(refreshRecordingStatus, 2000);
+}
+
+function qualityOptionLabel(quality) {
+  const parts = [quality.label || "Source"];
+  if (quality.width && quality.height && !String(quality.label || "").includes(`${quality.height}p`)) {
+    parts.push(`${quality.width}x${quality.height}`);
+  }
+  if (quality.fps) {
+    parts.push(`${Number(quality.fps).toFixed(Number(quality.fps) % 1 ? 1 : 0)} fps`);
+  }
+  return parts.join(" · ");
+}
+
+function showFfmpegModal(message = "") {
+  els.ffmpegModalMessage.textContent = message || ffmpegStatus().message || "FFmpeg is not installed or was not found on PATH.";
+  els.ffmpegInstallStatus.textContent = "";
+  els.installFfmpegModalButton.disabled = false;
+  closeModals();
+  openModal(els.ffmpegModal);
+}
+
+function fillQualitySelect(selectElement, selected) {
+  selectElement.innerHTML = recordingQualityPresets()
+    .map((quality) => `<option value="${escapeHtml(quality.id)}">${escapeHtml(quality.label)}</option>`)
+    .join("");
+  selectElement.value = selected || "best";
+}
+
+function recordingOptionsFromModal() {
+  return {
+    recording_dir: els.recordingOptionDirInput.value.trim(),
+    recording_default_quality: els.recordingOptionQualitySelect.value || "best",
+  };
+}
+
+function openRecordingOptionsModal(channelId) {
+  const channel = channelById(channelId);
+  if (!channel) return;
+  pendingRecording = {
+    channel_id: channelId,
+    options: {
+      recording_dir: recordingPathValue(),
+      recording_default_quality: appState?.settings?.recording_default_quality || "best",
+    },
+  };
+  els.recordingOptionsChannel.textContent = channel.name;
+  els.recordingOptionDirInput.value = pendingRecording.options.recording_dir;
+  fillQualitySelect(els.recordingOptionQualitySelect, pendingRecording.options.recording_default_quality);
+  els.confirmRecordingOptionsButton.disabled = false;
+  closeModals();
+  openModal(els.recordingOptionsModal);
+}
+
+function showRecordingQualityModal(prepared) {
+  pendingRecording = prepared;
+  const channel = channelById(prepared.channel_id);
+  els.recordingQualityChannel.textContent = channel?.name || "Channel";
+  els.recordingQualitySelect.innerHTML = (prepared.qualities || [])
+    .map((quality) => `<option value="${escapeHtml(quality.id)}">${escapeHtml(qualityOptionLabel(quality))}</option>`)
+    .join("");
+  els.recordingQualitySelect.value = prepared.selected_quality_id || prepared.qualities?.[0]?.id || "source";
+  closeModals();
+  openModal(els.recordingQualityModal);
+}
+
+async function prepareRecording(channelId, options = {}) {
+  setLocalRecordingStatus(channelId, "preparing", "Checking FFmpeg and stream qualities...");
+  let data;
+  try {
+    data = await api("/api/recording/prepare", {
+      method: "POST",
+      body: JSON.stringify({ channel_id: channelId, recording_options: options }),
+    });
+  } catch (error) {
+    setLocalRecordingStatus(channelId, "error", error.message);
+    showToast(error.message, "error");
+    return;
+  }
+  if (!data.ffmpeg?.available) {
+    pendingRecording = { channel_id: channelId, options };
+    setLocalRecordingStatus(channelId, "error", data.ffmpeg?.message || "FFmpeg is not installed or was not found.");
+    showFfmpegModal(data.ffmpeg?.message);
+    return;
+  }
+
+  const qualities = data.qualities || [];
+  if (qualities.length > 1) {
+    setLocalRecordingStatus(channelId, "starting", "Starting FFmpeg with selected quality preference...");
+  }
+
+  await startRecording(channelId, data.selected_quality_id || qualities[0]?.id || "source", options);
+}
+
+async function startRecording(channelId, qualityId, options = {}) {
+  setLocalRecordingStatus(channelId, "starting", "Starting FFmpeg...", { quality_id: qualityId || "" });
+  try {
+    const status = await api("/api/recording/start", {
+      method: "POST",
+      body: JSON.stringify({ channel_id: channelId, quality_id: qualityId, recording_options: options }),
+    });
+    setRecordingStatus(status, { show: true });
+    closeModals();
+    render();
+    showToast("Recording started");
+  } catch (error) {
+    closeModals();
+    setLocalRecordingStatus(channelId, "error", error.message, { quality_id: qualityId || "" });
+    showToast(error.message, "error");
+  }
+}
+
+async function confirmRecordingOptions() {
+  if (!pendingRecording?.channel_id) return;
+  const options = recordingOptionsFromModal();
+  pendingRecording.options = options;
+  els.confirmRecordingOptionsButton.disabled = true;
+  closeModals();
+  try {
+    await prepareRecording(pendingRecording.channel_id, options);
+  } finally {
+    els.confirmRecordingOptionsButton.disabled = false;
+  }
+}
+
+async function stopRecording(options = {}) {
+  try {
+    setRecordingStatus(await api("/api/recording/stop", { method: "POST" }), { show: !options.dismiss });
+    if (options.dismiss) {
+      recordingFooterDismissed = true;
+    }
+    render();
+    showToast("Recording stopped");
+  } catch (error) {
+    setRecordingStatus({ ...recordingState, state: "error", message: error.message }, { show: true });
+    render();
+    throw error;
+  }
+}
+
+function dismissRecordingFooter() {
+  if (recordingState?.active) {
+    openModal(els.recordingDismissModal);
+    return;
+  }
+  recordingFooterDismissed = true;
+  renderRecordingFooter();
+}
+
+async function confirmDismissRecordingFooter() {
+  els.confirmDismissRecordingButton.disabled = true;
+  try {
+    await stopRecording({ dismiss: true });
+    closeModals();
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    els.confirmDismissRecordingButton.disabled = false;
+  }
+}
+
+async function handleRecordChannel(channelId) {
+  if (isRecordingChannel(channelId)) {
+    await stopRecording();
+    return;
+  }
+  if (recordingState?.active) {
+    showToast("Stop the current recording before starting another.", "error");
+    return;
+  }
+  openRecordingOptionsModal(channelId);
+}
+
+async function openRecordingFile() {
+  const data = await api("/api/recording/open", {
+    method: "POST",
+    body: JSON.stringify({ player: selectedPlayerId() }),
+  });
+  showToast(`Opened recording in ${data.label || selectedPlayerLabel()}`);
+}
+
+async function revealRecordingFile() {
+  await api("/api/recording/reveal", { method: "POST" });
+}
+
 function fillSettingsForm() {
   els.gridplayerPathInput.value = playerPathValue("gridplayer");
   els.mpvPathInput.value = playerPathValue("mpv");
   els.vlcPathInput.value = playerPathValue("vlc");
   els.apiSportsKeyInput.value = appState?.api_sports?.key || "";
+  els.ffmpegPathInput.value = appState?.settings?.ffmpeg_path || ffmpegStatus().path || "";
+  els.recordingDirInput.value = recordingPathValue();
+  fillRecordingQualityPresets();
+  renderFfmpegStatus();
   syncPlayerPathPickerButtons();
   setApiKeyVisibility(false);
+}
+
+function fillRecordingQualityPresets() {
+  const selected = appState?.settings?.recording_default_quality || "best";
+  els.recordingDefaultQualitySelect.innerHTML = recordingQualityPresets()
+    .map((quality) => `<option value="${escapeHtml(quality.id)}">${escapeHtml(quality.label)}</option>`)
+    .join("");
+  els.recordingDefaultQualitySelect.value = selected;
+}
+
+function renderFfmpegStatus() {
+  const status = ffmpegStatus();
+  els.ffmpegStatusTitle.textContent = status.available ? "FFmpeg ready" : "FFmpeg missing";
+  els.ffmpegStatusText.textContent = status.available
+    ? (status.path || "FFmpeg is available.")
+    : (status.message || "FFmpeg is not installed or was not found.");
+  els.installFfmpegSettingsButton.hidden = Boolean(status.available);
+}
+
+function setSettingsTab(tabName) {
+  document.querySelectorAll("[data-settings-tab]").forEach((tab) => {
+    const active = tab.dataset.settingsTab === tabName;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", String(active));
+  });
+  document.querySelectorAll("[data-settings-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.settingsPanel !== tabName;
+  });
 }
 
 function syncPlayerPathPickerButtons() {
@@ -1019,6 +1448,89 @@ async function pickPlayerExecutable(playerId, button) {
     showToast(error.message, "error");
   } finally {
     syncPlayerPathPickerButtons();
+  }
+}
+
+async function saveSettingsPatch(patch, options = {}) {
+  const data = await api("/api/settings", {
+    method: "POST",
+    body: JSON.stringify(patch),
+  });
+  setAppState(data.state, { preserveGames: true });
+  if (!options.skipRender) {
+    render();
+  }
+  return data.state;
+}
+
+async function pickFfmpegExecutable(button, options = {}) {
+  const targetInput = options.targetInput || els.ffmpegPathInput;
+  button.disabled = true;
+  try {
+    const data = await api("/api/select-ffmpeg-executable", { method: "POST" });
+    if (data.path) {
+      targetInput.value = data.path;
+      if (options.save) {
+        await saveSettingsPatch({ ffmpeg_path: data.path }, { skipRender: true });
+        fillSettingsForm();
+      }
+      if (options.retryRecording && pendingRecording?.channel_id) {
+        pendingRecording.options = {
+          ...(pendingRecording.options || {}),
+          ffmpeg_path: data.path,
+        };
+        closeModals();
+        await prepareRecording(pendingRecording.channel_id, pendingRecording.options);
+      }
+    }
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function pickRecordingDirectory(button, options = {}) {
+  const targetInput = options.targetInput || els.recordingDirInput;
+  button.disabled = true;
+  try {
+    const data = await api("/api/select-recording-directory", { method: "POST" });
+    if (data.path) {
+      targetInput.value = data.path;
+      targetInput.focus();
+    }
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function installFfmpeg(statusElement = els.ffmpegInstallStatus) {
+  els.installFfmpegModalButton.disabled = true;
+  els.installFfmpegSettingsButton.disabled = true;
+  statusElement.className = "update-status";
+  statusElement.textContent = "Installing FFmpeg with winget...";
+  try {
+    const data = await api("/api/ffmpeg/install", { method: "POST" });
+    setAppState(data.state, { preserveGames: true });
+    fillSettingsForm();
+    statusElement.textContent = "FFmpeg installed.";
+    showToast("FFmpeg installed");
+    if (pendingRecording?.channel_id) {
+      pendingRecording.options = {
+        ...(pendingRecording.options || {}),
+        ffmpeg_path: data.state?.settings?.ffmpeg_path || pendingRecording.options?.ffmpeg_path || "",
+      };
+      closeModals();
+      await prepareRecording(pendingRecording.channel_id, pendingRecording.options);
+    }
+  } catch (error) {
+    statusElement.className = "update-status error";
+    statusElement.textContent = error.message;
+  } finally {
+    els.installFfmpegModalButton.disabled = false;
+    els.installFfmpegSettingsButton.disabled = false;
   }
 }
 
@@ -1315,6 +1827,10 @@ function closeModals() {
   els.renameSourceModal.hidden = true;
   els.removeSourceModal.hidden = true;
   els.settingsModal.hidden = true;
+  els.ffmpegModal.hidden = true;
+  els.recordingOptionsModal.hidden = true;
+  els.recordingQualityModal.hidden = true;
+  els.recordingDismissModal.hidden = true;
   els.aboutModal.hidden = true;
   els.updateModal.hidden = true;
 }
@@ -1378,7 +1894,14 @@ function bindEvents() {
 
   els.settingsButton.addEventListener("click", () => {
     fillSettingsForm();
+    setSettingsTab("general");
     openModal(els.settingsModal);
+  });
+
+  document.querySelectorAll("[data-settings-tab]").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      setSettingsTab(tab.dataset.settingsTab);
+    });
   });
 
   els.addFilterButton.addEventListener("click", openCustomFilterDialog);
@@ -1473,6 +1996,9 @@ function bindEvents() {
           gridplayer_path: els.gridplayerPathInput.value,
           mpv_path: els.mpvPathInput.value,
           vlc_path: els.vlcPathInput.value,
+          ffmpeg_path: els.ffmpegPathInput.value,
+          recording_dir: els.recordingDirInput.value,
+          recording_default_quality: els.recordingDefaultQualitySelect.value,
           api_sports_key: els.apiSportsKeyInput.value,
         }),
       }), { refreshSports: true });
@@ -1496,6 +2022,76 @@ function bindEvents() {
       pickPlayerExecutable(button.dataset.playerPathPicker, button);
     });
   });
+
+  els.ffmpegPathPickerButton.addEventListener("click", () => {
+    pickFfmpegExecutable(els.ffmpegPathPickerButton);
+  });
+
+  els.recordingDirPickerButton.addEventListener("click", () => {
+    pickRecordingDirectory(els.recordingDirPickerButton);
+  });
+
+  els.recordingOptionDirPickerButton.addEventListener("click", () => {
+    pickRecordingDirectory(els.recordingOptionDirPickerButton, {
+      targetInput: els.recordingOptionDirInput,
+    });
+  });
+
+  els.browseFfmpegModalButton.addEventListener("click", () => {
+    pickFfmpegExecutable(els.browseFfmpegModalButton, { save: true, retryRecording: true });
+  });
+
+  els.installFfmpegModalButton.addEventListener("click", () => {
+    installFfmpeg(els.ffmpegInstallStatus);
+  });
+
+  els.installFfmpegSettingsButton.addEventListener("click", () => {
+    installFfmpeg(els.ffmpegStatusText);
+  });
+
+  els.startRecordingQualityButton.addEventListener("click", async () => {
+    if (!pendingRecording?.channel_id) return;
+    try {
+      await startRecording(pendingRecording.channel_id, els.recordingQualitySelect.value, pendingRecording.options || {});
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+
+  els.confirmRecordingOptionsButton.addEventListener("click", async () => {
+    try {
+      await confirmRecordingOptions();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+
+  els.recordingOpenButton.addEventListener("click", async () => {
+    try {
+      await openRecordingFile();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+
+  els.recordingRevealButton.addEventListener("click", async () => {
+    try {
+      await revealRecordingFile();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+
+  els.recordingStopButton.addEventListener("click", async () => {
+    try {
+      await stopRecording();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+
+  els.recordingDismissButton.addEventListener("click", dismissRecordingFooter);
+  els.confirmDismissRecordingButton.addEventListener("click", confirmDismissRecordingFooter);
 
   els.playerSelect.addEventListener("change", async () => {
     try {
@@ -1687,6 +2283,8 @@ function bindEvents() {
     try {
       if (action === "favorite") {
         await refreshWithState(api(`/api/channels/${channelId}/favorite`, { method: "POST" }));
+      } else if (action === "record") {
+        await handleRecordChannel(channelId);
       } else if (action === "open") {
         await openChannel(channelId);
       } else if (isRepeatedRowClick) {
@@ -1707,6 +2305,8 @@ function bindEvents() {
     try {
       if (action === "open") {
         await openChannel(actions.dataset.channelId);
+      } else if (action === "record") {
+        await handleRecordChannel(actions.dataset.channelId);
       }
     } catch (error) {
       showToast(error.message, "error");
@@ -1725,8 +2325,15 @@ function initEls() {
     "urlForm", "urlNameInput", "urlInput", "renameSourceModal", "renameSourceForm", "renameSourceInput",
     "confirmRenameSourceButton", "removeSourceModal", "removeSourceName",
     "confirmRemoveSourceButton", "settingsModal", "settingsForm",
-    "gridplayerPathInput", "mpvPathInput", "vlcPathInput", "apiSportsKeyInput",
-    "toggleApiKeyButton", "aboutButton", "aboutModal", "aboutVersion", "aboutRepoLink",
+    "gridplayerPathInput", "mpvPathInput", "vlcPathInput", "ffmpegPathInput", "ffmpegPathPickerButton",
+    "recordingDirInput", "recordingDirPickerButton", "recordingDefaultQualitySelect",
+    "ffmpegStatusTitle", "ffmpegStatusText", "installFfmpegSettingsButton", "apiSportsKeyInput",
+    "toggleApiKeyButton", "ffmpegModal", "ffmpegModalMessage", "ffmpegInstallStatus", "browseFfmpegModalButton",
+    "installFfmpegModalButton", "recordingOptionsModal", "recordingOptionsChannel", "recordingOptionDirInput", "recordingOptionDirPickerButton",
+    "recordingOptionQualitySelect", "confirmRecordingOptionsButton", "recordingQualityModal", "recordingQualityChannel", "recordingQualitySelect",
+    "startRecordingQualityButton", "recordingFooter", "recordingFooterIcon", "recordingFooterTitle", "recordingFooterMeta",
+    "recordingOpenButton", "recordingRevealButton", "recordingStopButton", "recordingDismissButton",
+    "recordingDismissModal", "confirmDismissRecordingButton", "aboutButton", "aboutModal", "aboutVersion", "aboutRepoLink",
     "checkUpdatesButton", "aboutInstallUpdateButton", "updateStatus", "updateModal",
     "updateCurrentVersion", "updateLatestVersion", "updateReleaseLink", "updateInstallStatus",
     "updateInstallButton", "toast",
