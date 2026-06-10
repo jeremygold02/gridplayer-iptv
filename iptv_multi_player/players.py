@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 from typing import Any
@@ -42,6 +43,21 @@ def find_player(player_id: str, settings: dict[str, Any]) -> Path | None:
     return None
 
 
+def player_flags(player_id: str, settings: dict[str, Any]) -> str:
+    config = PLAYER_CONFIG[normalize_player_id(player_id)]
+    return str(settings.get(config["flags_key"], "") or "").strip()
+
+
+def player_flag_args(player_id: str, settings: dict[str, Any]) -> list[str]:
+    flags = player_flags(player_id, settings)
+    if not flags:
+        return []
+    try:
+        return shlex.split(flags)
+    except ValueError as exc:
+        raise ValueError(f"Could not parse {player_label(player_id)} flags: {exc}") from exc
+
+
 def find_gridplayer(settings: dict[str, Any]) -> Path | None:
     return find_player("gridplayer", settings)
 
@@ -52,6 +68,7 @@ def public_players(settings: dict[str, Any]) -> dict[str, Any]:
     for player_id in PLAYER_ORDER:
         config = PLAYER_CONFIG[player_id]
         configured_path = str(settings.get(config["path_key"], "") or "").strip()
+        configured_flags = player_flags(player_id, settings)
         path = find_player(player_id, settings)
         items.append({
             "id": player_id,
@@ -59,8 +76,10 @@ def public_players(settings: dict[str, Any]) -> dict[str, Any]:
             "available": path is not None,
             "path": str(path) if path else "",
             "configured_path": configured_path,
+            "configured_flags": configured_flags,
             "configured_available": bool(configured_path and Path(configured_path).is_file()),
             "path_key": config["path_key"],
+            "flags_key": config["flags_key"],
         })
     return {"selected": selected, "items": items}
 
@@ -73,12 +92,13 @@ def launch_player(urls: list[str], settings: dict[str, Any], player_id: Any = No
     if not urls:
         raise ValueError("No stream URLs to open.")
 
+    flag_args = player_flag_args(player, settings)
     creationflags = 0
     if os.name == "nt":
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
 
     subprocess.Popen(
-        [str(executable), *urls],
+        [str(executable), *flag_args, *urls],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

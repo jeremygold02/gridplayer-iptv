@@ -1313,6 +1313,10 @@ body.recording-footer-visible .detail-panel {
   gap: 8px;
 }
 
+.player-path-input-row {
+  grid-template-columns: minmax(0, 1fr) 42px 42px;
+}
+
 .path-input-row input,
 .secret-input-row input {
   min-width: 0;
@@ -1322,6 +1326,11 @@ body.recording-footer-visible .detail-panel {
 .secret-input-row .icon-button {
   width: 42px;
   height: 42px;
+}
+
+.path-input-row .icon-button.active {
+  border-color: rgba(16, 183, 164, 0.55);
+  color: var(--teal);
 }
 
 .toggle-row {
@@ -1354,9 +1363,51 @@ body.recording-footer-visible .detail-panel {
 .about-modal,
 .update-modal,
 .ffmpeg-modal,
+.player-flags-modal,
 .recording-options-modal,
 .recording-quality-modal {
   width: min(500px, calc(100vw - 40px));
+}
+
+.flag-preset-list {
+  display: grid;
+  gap: 7px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.flag-preset-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--line-soft);
+  background: #0e1313;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.flag-preset-button:hover {
+  border-color: rgba(16, 183, 164, 0.5);
+  background: #172020;
+}
+
+.flag-preset-button code {
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.flag-preset-empty {
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  background: #0e1313;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .about-body,

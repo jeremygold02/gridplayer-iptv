@@ -9,10 +9,38 @@ const PLAYER_PATH_FIELDS = {
   mpv: "mpv_path",
   vlc: "vlc_path",
 };
+const PLAYER_FLAG_FIELDS = {
+  gridplayer: "gridplayer_flags",
+  mpv: "mpv_flags",
+  vlc: "vlc_flags",
+};
 const PLAYER_PATH_INPUT_IDS = {
   gridplayer: "gridplayerPathInput",
   mpv: "mpvPathInput",
   vlc: "vlcPathInput",
+};
+const PLAYER_FLAG_PRESETS = {
+  gridplayer: [],
+  mpv: [
+    { flag: "--fullscreen", label: "Fullscreen" },
+    { flag: "--ontop", label: "Always on top" },
+    { flag: "--force-window=yes", label: "Force player window" },
+    { flag: "--keep-open=no", label: "Close when stream ends" },
+    { flag: "--profile=low-latency", label: "Low latency profile" },
+    { flag: "--cache=yes", label: "Use stream cache" },
+    { flag: "--hls-bitrate=max", label: "Prefer best HLS quality" },
+    { flag: "--hwdec=auto-safe", label: "Hardware decoding" },
+  ],
+  vlc: [
+    { flag: "--autoscale", label: "Always fit window" },
+    { flag: "--fullscreen", label: "Fullscreen" },
+    { flag: "--no-video-title-show", label: "Hide video title" },
+    { flag: "--one-instance", label: "Reuse VLC instance" },
+    { flag: "--no-qt-video-autoresize", label: "Do not resize window to video" },
+    { flag: "--network-caching=1000", label: "Network cache 1000ms" },
+    { flag: "--live-caching=1000", label: "Live cache 1000ms" },
+    { flag: "--avcodec-hw=any", label: "Hardware decoding" },
+  ],
 };
 const GAME_SORT_RANK = {
   loading: 0,
@@ -64,6 +92,7 @@ let recordingFooterDismissed = false;
 let pendingRecording = null;
 let pendingSourceRemovalId = null;
 let pendingSourceRenameId = null;
+let pendingPlayerFlagsId = null;
 let categoryDrag = null;
 let suppressCategoryClick = false;
 let lastChannelClick = {
@@ -129,6 +158,12 @@ function playerPathValue(playerId) {
 function playerPathInput(playerId) {
   const inputId = PLAYER_PATH_INPUT_IDS[playerId];
   return inputId ? els[inputId] : null;
+}
+
+function playerFlagValue(playerId) {
+  const flagField = PLAYER_FLAG_FIELDS[playerId];
+  if (!flagField) return "";
+  return appState?.settings?.[flagField] || playerById(playerId)?.configured_flags || "";
 }
 
 function channelById(channelId) {
@@ -1387,6 +1422,7 @@ function fillSettingsForm() {
   fillRecordingQualityPresets();
   renderFfmpegStatus();
   syncPlayerPathPickerButtons();
+  syncPlayerFlagButtons();
   setApiKeyVisibility(false);
 }
 
@@ -1429,6 +1465,68 @@ function syncPlayerPathPickerButtons() {
       : "File picker is available in the desktop app";
     button.setAttribute("aria-label", button.title);
   });
+}
+
+function syncPlayerFlagButtons() {
+  document.querySelectorAll("[data-player-flag-editor]").forEach((button) => {
+    const playerId = button.dataset.playerFlagEditor;
+    const label = playerById(playerId)?.label || playerId;
+    const hasFlags = Boolean(playerFlagValue(playerId));
+    button.classList.toggle("active", hasFlags);
+    button.title = hasFlags ? `Edit ${label} flags` : `Add ${label} flags`;
+    button.setAttribute("aria-label", button.title);
+  });
+}
+
+function renderPlayerFlagPresets(playerId) {
+  const presets = PLAYER_FLAG_PRESETS[playerId] || [];
+  if (!presets.length) {
+    els.playerFlagPresetList.innerHTML = `<div class="flag-preset-empty">No built-in presets for this player. You can paste custom flags above.</div>`;
+    return;
+  }
+  els.playerFlagPresetList.innerHTML = presets.map((preset) => `
+    <button class="flag-preset-button" data-player-flag-preset="${escapeHtml(preset.flag)}" type="button">
+      <span>${escapeHtml(preset.label)}</span>
+      <code>${escapeHtml(preset.flag)}</code>
+    </button>
+  `).join("");
+}
+
+function appendPlayerFlag(flag) {
+  const value = String(flag || "").trim();
+  if (!value) return;
+  const current = els.playerFlagsInput.value.trim();
+  const existing = current ? current.split(/\s+/) : [];
+  if (existing.includes(value)) return;
+  els.playerFlagsInput.value = current ? `${current} ${value}` : value;
+  els.playerFlagsInput.focus();
+}
+
+function openPlayerFlagsModal(playerId) {
+  if (!PLAYER_FLAG_FIELDS[playerId]) return;
+  pendingPlayerFlagsId = playerId;
+  const label = playerById(playerId)?.label || playerId;
+  els.playerFlagsTitle.textContent = `${label} Flags`;
+  els.playerFlagsInput.value = playerFlagValue(playerId);
+  els.playerFlagsInput.placeholder = playerId === "vlc" ? "Example: --autoscale" : "Example: --fullscreen";
+  els.playerFlagsHelp.textContent = `Flags are passed to ${label} before the stream URL when it launches.`;
+  renderPlayerFlagPresets(playerId);
+  openModal(els.playerFlagsModal);
+}
+
+function closePlayerFlagsModal() {
+  els.playerFlagsModal.hidden = true;
+  pendingPlayerFlagsId = null;
+}
+
+async function savePlayerFlags() {
+  const playerId = pendingPlayerFlagsId;
+  const field = PLAYER_FLAG_FIELDS[playerId];
+  if (!field) return;
+  await saveSettingsPatch({ [field]: els.playerFlagsInput.value.trim() }, { skipRender: true });
+  syncPlayerFlagButtons();
+  closePlayerFlagsModal();
+  showToast(`${playerById(playerId)?.label || "Player"} flags saved`);
 }
 
 async function pickPlayerExecutable(playerId, button) {
@@ -1828,6 +1926,7 @@ function closeModals() {
   els.renameSourceModal.hidden = true;
   els.removeSourceModal.hidden = true;
   els.settingsModal.hidden = true;
+  els.playerFlagsModal.hidden = true;
   els.ffmpegModal.hidden = true;
   els.recordingOptionsModal.hidden = true;
   els.recordingQualityModal.hidden = true;
@@ -1932,6 +2031,31 @@ function bindEvents() {
 
   document.querySelectorAll("[data-close-modal]").forEach((button) => {
     button.addEventListener("click", closeModals);
+  });
+
+  document.querySelectorAll("[data-close-player-flags]").forEach((button) => {
+    button.addEventListener("click", closePlayerFlagsModal);
+  });
+
+  document.querySelectorAll("[data-player-flag-editor]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openPlayerFlagsModal(button.dataset.playerFlagEditor);
+    });
+  });
+
+  els.playerFlagPresetList.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-player-flag-preset]");
+    if (!button) return;
+    appendPlayerFlag(button.dataset.playerFlagPreset);
+  });
+
+  els.playerFlagsForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await savePlayerFlags();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
   });
 
   els.checkUpdatesButton.addEventListener("click", async () => {
@@ -2327,6 +2451,7 @@ function initEls() {
     "confirmRenameSourceButton", "removeSourceModal", "removeSourceName",
     "confirmRemoveSourceButton", "settingsModal", "settingsForm",
     "gridplayerPathInput", "mpvPathInput", "vlcPathInput", "ffmpegPathInput", "ffmpegPathPickerButton",
+    "playerFlagsModal", "playerFlagsForm", "playerFlagsTitle", "playerFlagsInput", "playerFlagPresetList", "playerFlagsHelp",
     "recordingDirInput", "recordingDirPickerButton", "recordingDefaultQualitySelect",
     "ffmpegStatusTitle", "ffmpegStatusText", "installFfmpegSettingsButton", "apiSportsKeyInput",
     "toggleApiKeyButton", "ffmpegModal", "ffmpegModalMessage", "ffmpegInstallStatus", "browseFfmpegModalButton",

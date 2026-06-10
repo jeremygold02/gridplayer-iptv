@@ -603,8 +603,11 @@ def api_settings():
         "grid_size",
         "selected_player",
         "gridplayer_path",
+        "gridplayer_flags",
         "mpv_path",
+        "mpv_flags",
         "vlc_path",
+        "vlc_flags",
         "ffmpeg_path",
         "recording_dir",
         "recording_default_quality",
@@ -627,6 +630,8 @@ def api_settings():
                     settings[key] = sanitize_recording_quality(payload[key])
                 elif key.endswith("_path"):
                     settings[key] = str(payload[key] or "").strip()
+                elif key.endswith("_flags"):
+                    settings[key] = str(payload[key] or "").strip()[:2000]
                 elif key == "recording_dir":
                     settings[key] = str(payload[key] or "").strip()
                 elif key == "pinned_categories":

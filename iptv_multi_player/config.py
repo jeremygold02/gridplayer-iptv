@@ -40,6 +40,7 @@ PLAYER_CONFIG = {
     "gridplayer": {
         "label": "GridPlayer",
         "path_key": "gridplayer_path",
+        "flags_key": "gridplayer_flags",
         "env": "GRIDPLAYER_PATH",
         "commands": ("GridPlayer", "gridplayer", "GridPlayer.exe", "gridplayer.exe"),
         "paths": (
@@ -54,6 +55,7 @@ PLAYER_CONFIG = {
     "mpv": {
         "label": "MPV",
         "path_key": "mpv_path",
+        "flags_key": "mpv_flags",
         "env": "MPV_PATH",
         "commands": ("mpv", "mpv.exe"),
         "paths": (
@@ -67,6 +69,7 @@ PLAYER_CONFIG = {
     "vlc": {
         "label": "VLC",
         "path_key": "vlc_path",
+        "flags_key": "vlc_flags",
         "env": "VLC_PATH",
         "commands": ("vlc", "vlc.exe"),
         "paths": (
