@@ -83,7 +83,13 @@ class ActiveRecording:
     quality_label: str
     output_path: Path
     process: subprocess.Popen
+    output_handle: Any
+    command: list[str]
     started_at: float
+    retry_count: int = 0
+    retry_after: float = 0.0
+    retry_message: str = ""
+    last_returncode: int | None = None
 
 
 def default_recording_dir() -> Path:
@@ -487,6 +493,44 @@ def recording_map_args(quality: QualityOption) -> list[str]:
     return ["-map", "0:v?", "-map", "0:a?"]
 
 
+def retry_delay_seconds(retry_count: int) -> int:
+    if retry_count <= 3:
+        return 1
+    if retry_count <= 6:
+        return 3
+    if retry_count <= 10:
+        return 5
+    return 10
+
+
+def close_output_handle(active: ActiveRecording) -> None:
+    try:
+        active.output_handle.close()
+    except OSError:
+        pass
+
+
+def launch_recording_process(command: list[str], output_path: Path, append: bool) -> tuple[subprocess.Popen, Any]:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_handle = output_path.open("ab" if append else "wb")
+    try:
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=output_handle,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            **run_hidden_kwargs(),
+        )
+    except Exception:
+        output_handle.close()
+        raise
+    return process, output_handle
+
+
 def probe_qualities(url: str, settings: dict[str, Any]) -> tuple[list[QualityOption], FfmpegInfo]:
     ffmpeg = find_ffmpeg(settings)
     if not ffmpeg.available:
@@ -505,6 +549,8 @@ def probe_qualities(url: str, settings: dict[str, Any]) -> tuple[list[QualityOpt
 
 def public_status_from_active(active: ActiveRecording) -> dict[str, Any]:
     elapsed = max(0, int(time.time() - active.started_at))
+    state = "retrying" if active.retry_after else "recording"
+    message = active.retry_message if active.retry_after else "Recording"
     size = 0
     if active.output_path.is_file():
         try:
@@ -513,8 +559,8 @@ def public_status_from_active(active: ActiveRecording) -> dict[str, Any]:
             size = 0
     return {
         "active": True,
-        "state": "recording",
-        "message": "Recording",
+        "state": state,
+        "message": message,
         "channel_id": active.channel_id,
         "channel_name": active.channel_name,
         "quality_id": active.quality_id,
@@ -522,6 +568,7 @@ def public_status_from_active(active: ActiveRecording) -> dict[str, Any]:
         "output_path": str(active.output_path),
         "elapsed_seconds": elapsed,
         "size_bytes": size,
+        "retry_count": active.retry_count,
     }
 
 
@@ -555,16 +602,40 @@ class RecordingManager:
         self._last_output_path: Path | None = None
         self._last_status: dict[str, Any] | None = None
 
+    def _schedule_retry_locked(self, active: ActiveRecording, returncode: int | None) -> None:
+        active.retry_count += 1
+        active.last_returncode = returncode
+        delay = retry_delay_seconds(active.retry_count)
+        active.retry_after = time.time() + delay
+        code_text = "unknown exit code" if returncode is None else f"exit code {returncode}"
+        active.retry_message = f"Stream cut out ({code_text}). Retrying automatically..."
+        self._last_output_path = active.output_path
+
+    def _restart_active_locked(self, active: ActiveRecording) -> None:
+        try:
+            process, output_handle = launch_recording_process(active.command, active.output_path, append=True)
+        except Exception as exc:  # noqa: BLE001 - keep retrying transient launch failures
+            active.retry_count += 1
+            delay = retry_delay_seconds(active.retry_count)
+            active.retry_after = time.time() + delay
+            active.retry_message = f"Could not restart recording: {exc}. Retrying automatically..."
+            return
+
+        active.process = process
+        active.output_handle = output_handle
+        active.retry_after = 0.0
+        active.retry_message = ""
+
     def _clear_finished_locked(self) -> None:
         if self._active and self._active.process.poll() is not None:
             active = self._active
             returncode = active.process.returncode
-            self._last_output_path = active.output_path
-            if returncode == 0:
-                self._last_status = public_terminal_status(active, "stopped", "Recording stopped.")
-            else:
-                self._last_status = public_terminal_status(active, "error", f"Recording failed with FFmpeg exit code {returncode}.")
-            self._active = None
+            if not active.retry_after:
+                close_output_handle(active)
+                self._schedule_retry_locked(active, returncode)
+                return
+            if time.time() >= active.retry_after:
+                self._restart_active_locked(active)
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -640,20 +711,10 @@ class RecordingManager:
             "1",
             "-f",
             "mpegts",
-            str(output_path),
+            "pipe:1",
         ]
 
-        process = subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            close_fds=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            **run_hidden_kwargs(),
-        )
+        process, output_handle = launch_recording_process(command, output_path, append=False)
 
         active = ActiveRecording(
             channel_id=str(channel.get("id") or ""),
@@ -662,6 +723,8 @@ class RecordingManager:
             quality_label=quality.label,
             output_path=output_path,
             process=process,
+            output_handle=output_handle,
+            command=command,
             started_at=time.time(),
         )
         with self._lock:
@@ -694,9 +757,12 @@ class RecordingManager:
                     process.kill()
                     process.wait(timeout=4)
 
+        close_output_handle(active)
         with self._lock:
             self._last_output_path = active.output_path
             self._active = None
+            active.retry_after = 0.0
+            active.retry_message = ""
             self._last_status = public_terminal_status(active, "stopped", "Recording stopped.")
             return self._last_status
 

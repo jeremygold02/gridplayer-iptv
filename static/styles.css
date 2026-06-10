@@ -728,9 +728,15 @@ body.recording-footer-visible .detail-panel {
 .table-header,
 .channel-row {
   display: grid;
-  grid-template-columns: minmax(280px, 1.28fr) minmax(130px, 0.58fr) minmax(128px, 0.5fr) 136px;
+  grid-template-columns: minmax(190px, 1.35fr) minmax(96px, 0.52fr) minmax(104px, 0.52fr) 112px;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
+}
+
+.table-header > *,
+.channel-row > * {
+  min-width: 0;
 }
 
 .table-header {
@@ -744,8 +750,8 @@ body.recording-footer-visible .detail-panel {
 
 .table-header > :last-child {
   justify-self: end;
-  width: 100px;
-  margin-right: 4px;
+  width: 98px;
+  margin-right: 0;
   text-align: center;
 }
 
@@ -1009,6 +1015,12 @@ body.recording-footer-visible .detail-panel {
   align-items: center;
   justify-content: flex-end;
   gap: 7px;
+}
+
+.row-actions {
+  justify-self: end;
+  min-width: 0;
+  width: fit-content;
 }
 
 .icon-button {
@@ -1547,8 +1559,8 @@ body.recording-footer-visible .toast {
 
   .table-header,
   .channel-row {
-    grid-template-columns: minmax(220px, 1.32fr) 92px 108px 108px;
-    gap: 8px;
+    grid-template-columns: minmax(150px, 1.35fr) minmax(72px, 0.46fr) minmax(82px, 0.5fr) 108px;
+    gap: 6px;
   }
 
   .table-header {
@@ -1556,7 +1568,7 @@ body.recording-footer-visible .toast {
   }
 
   .table-header > :last-child {
-    width: 94px;
+    width: 106px;
     margin-right: 0;
   }
 

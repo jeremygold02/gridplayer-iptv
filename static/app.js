@@ -812,12 +812,12 @@ function recordingStatusKey(status = recordingState) {
 function recordingFooterShouldShow(status = recordingState) {
   if (recordingFooterDismissed) return false;
   const state = recordingStatusKind(status);
-  return Boolean(status?.active || ["preparing", "starting", "waiting", "error", "stopped"].includes(state));
+  return Boolean(status?.active || ["preparing", "starting", "waiting", "retrying", "error", "stopped"].includes(state));
 }
 
 function recordingStatusCanShow(status = recordingState) {
   const state = recordingStatusKind(status);
-  return Boolean(status?.active || ["preparing", "starting", "waiting", "error", "stopped"].includes(state));
+  return Boolean(status?.active || ["preparing", "starting", "waiting", "retrying", "error", "stopped"].includes(state));
 }
 
 function setRecordingStatus(status, options = {}) {
@@ -854,7 +854,7 @@ function setLocalRecordingStatus(channelId, state, message, extra = {}) {
 function shouldKeepLocalRecordingStatus(serverStatus) {
   if (!recordingState?.local || serverStatus?.active) return false;
   const localState = recordingStatusKind(recordingState);
-  if (!["preparing", "starting", "waiting", "error"].includes(localState)) return false;
+  if (!["preparing", "starting", "waiting", "retrying", "error"].includes(localState)) return false;
   return true;
 }
 
@@ -1139,16 +1139,17 @@ function renderRecordingFooter() {
   els.recordingFooter.hidden = !visible;
   if (!visible) return;
 
-  els.recordingFooter.classList.toggle("preparing", ["preparing", "starting", "waiting"].includes(state));
+  els.recordingFooter.classList.toggle("preparing", ["preparing", "starting", "waiting", "retrying"].includes(state));
   els.recordingFooter.classList.toggle("error", state === "error");
   els.recordingFooter.classList.toggle("stopped", state === "stopped");
   els.recordingFooter.classList.toggle("active", active);
-  els.recordingFooterIcon.textContent = state === "error" ? "error" : (state === "stopped" ? "check_circle" : "download");
+  els.recordingFooterIcon.textContent = state === "error" ? "error" : (state === "stopped" ? "check_circle" : (state === "retrying" ? "sync" : "download"));
 
   const stateTitle = {
     preparing: "Preparing Recording",
     starting: "Starting Recording",
     waiting: "Recording Ready",
+    retrying: "Retrying Recording",
     error: "Recording Error",
     stopped: "Recording Stopped",
     recording: "Recording",
