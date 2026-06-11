@@ -458,11 +458,29 @@
           </button>
         </div>
         <div class="quality-channel-name" id="recordingQualityChannel">Channel</div>
-        <label>
-          <span>Source quality</span>
-          <select id="recordingQualitySelect"></select>
-        </label>
-        <div class="modal-actions">
+        <div class="recording-quality-loading" id="recordingQualityLoading" hidden>
+          <span class="quality-spinner" aria-hidden="true"></span>
+          <p id="recordingQualityLoadingText">Checking the stream for available source qualities...</p>
+        </div>
+        <div id="recordingQualityFields">
+          <p class="quality-warning" id="recordingQualityMessage" hidden></p>
+          <div id="recordingQualityControls">
+            <div class="modal-field">
+              <span id="recordingQualityDirLabel">Recording folder</span>
+              <div class="path-input-row">
+                <input id="recordingQualityDirInput" type="text" placeholder="Select or paste recording folder" aria-labelledby="recordingQualityDirLabel">
+                <button class="icon-button" id="recordingQualityDirPickerButton" type="button" title="Browse for recording folder" aria-label="Browse for recording folder">
+                  <span class="material-icons" aria-hidden="true">folder_open</span>
+                </button>
+              </div>
+            </div>
+            <label>
+              <span>Source quality</span>
+              <select id="recordingQualitySelect"></select>
+            </label>
+          </div>
+        </div>
+        <div class="modal-actions" id="recordingQualityActions">
           <button class="secondary-button" data-close-modal type="button">Cancel</button>
           <button class="primary-button" id="startRecordingQualityButton" type="button">
             <span class="material-icons" aria-hidden="true">download</span>

@@ -90,6 +90,7 @@ let pendingUpdate = null;
 let recordingState = { active: false };
 let recordingFooterDismissed = false;
 let pendingRecording = null;
+let recordingProbeToken = 0;
 let pendingSourceRemovalId = null;
 let pendingSourceRenameId = null;
 let pendingPlayerFlagsId = null;
@@ -847,7 +848,7 @@ function recordingStatusKey(status = recordingState) {
 function recordingFooterShouldShow(status = recordingState) {
   if (recordingFooterDismissed) return false;
   const state = recordingStatusKind(status);
-  return Boolean(status?.active || ["preparing", "starting", "waiting", "retrying", "error", "stopped"].includes(state));
+  return Boolean(status?.active || state === "stopped" || (state === "error" && status?.output_path));
 }
 
 function recordingStatusCanShow(status = recordingState) {
@@ -1281,19 +1282,89 @@ function openRecordingOptionsModal(channelId) {
   openModal(els.recordingOptionsModal);
 }
 
-function showRecordingQualityModal(prepared) {
-  pendingRecording = prepared;
-  const channel = channelById(prepared.channel_id);
-  els.recordingQualityChannel.textContent = channel?.name || "Channel";
-  els.recordingQualitySelect.innerHTML = (prepared.qualities || [])
-    .map((quality) => `<option value="${escapeHtml(quality.id)}">${escapeHtml(qualityOptionLabel(quality))}</option>`)
-    .join("");
-  els.recordingQualitySelect.value = prepared.selected_quality_id || prepared.qualities?.[0]?.id || "source";
+function ensureRecordingQualityModalOpen() {
+  if (!els.recordingQualityModal.hidden) return;
   closeModals();
   openModal(els.recordingQualityModal);
 }
 
+function showRecordingQualityLoadingModal(channelId, options = {}) {
+  const channel = channelById(channelId);
+  pendingRecording = { channel_id: channelId, options };
+  els.recordingQualityTitle.textContent = "Finding Stream Qualities";
+  els.recordingQualityChannel.textContent = channel?.name || "Channel";
+  els.recordingQualityLoading.hidden = false;
+  els.recordingQualityFields.hidden = true;
+  els.recordingQualityControls.hidden = true;
+  els.recordingQualityActions.hidden = true;
+  els.recordingQualityMessage.hidden = true;
+  els.recordingQualityMessage.textContent = "";
+  els.recordingQualitySelect.innerHTML = "";
+  els.recordingQualityDirInput.value = options.recording_dir || recordingPathValue();
+  els.startRecordingQualityButton.hidden = false;
+  els.startRecordingQualityButton.disabled = true;
+  ensureRecordingQualityModalOpen();
+}
+
+function showRecordingQualityErrorModal(channelId, message, options = {}) {
+  const channel = channelById(channelId);
+  pendingRecording = { channel_id: channelId, options };
+  els.recordingQualityTitle.textContent = "Could Not Check Stream Qualities";
+  els.recordingQualityChannel.textContent = channel?.name || "Channel";
+  els.recordingQualityLoading.hidden = true;
+  els.recordingQualityFields.hidden = false;
+  els.recordingQualityControls.hidden = true;
+  els.recordingQualityActions.hidden = false;
+  els.recordingQualityMessage.hidden = false;
+  els.recordingQualityMessage.textContent = message || "The stream qualities could not be checked.";
+  els.recordingQualitySelect.innerHTML = "";
+  els.recordingQualityDirInput.value = options.recording_dir || recordingPathValue();
+  els.startRecordingQualityButton.hidden = true;
+  els.startRecordingQualityButton.disabled = true;
+  ensureRecordingQualityModalOpen();
+}
+
+function showRecordingQualityModal(prepared) {
+  pendingRecording = {
+    ...prepared,
+    options: {
+      recording_dir: recordingPathValue(),
+      recording_default_quality: appState?.settings?.recording_default_quality || "best",
+      ...(prepared.options || {}),
+    },
+  };
+  const channel = channelById(prepared.channel_id);
+  const unavailable = Boolean(prepared.quality_unavailable);
+  els.recordingQualityTitle.textContent = unavailable ? "Quality Not Available" : "Choose Recording Quality";
+  els.recordingQualityChannel.textContent = channel?.name || "Channel";
+  els.recordingQualityLoading.hidden = true;
+  els.recordingQualityFields.hidden = false;
+  els.recordingQualityControls.hidden = false;
+  els.recordingQualityActions.hidden = false;
+  els.recordingQualityMessage.hidden = !unavailable;
+  els.recordingQualityMessage.textContent = unavailable
+    ? (prepared.message || `${prepared.requested_quality_label || "Selected quality"} is not available for this stream.`)
+    : "";
+  els.recordingQualitySelect.innerHTML = (prepared.qualities || [])
+    .map((quality) => `<option value="${escapeHtml(quality.id)}">${escapeHtml(qualityOptionLabel(quality))}</option>`)
+    .join("");
+  els.recordingQualitySelect.value = prepared.selected_quality_id || prepared.qualities?.[0]?.id || "source";
+  els.recordingQualityDirInput.value = pendingRecording.options.recording_dir || recordingPathValue();
+  els.startRecordingQualityButton.hidden = false;
+  els.startRecordingQualityButton.disabled = !prepared.can_start;
+  ensureRecordingQualityModalOpen();
+}
+
+function recordingQualityOptionsFromModal() {
+  return {
+    ...(pendingRecording?.options || {}),
+    recording_dir: els.recordingQualityDirInput.value.trim(),
+  };
+}
+
 async function prepareRecording(channelId, options = {}) {
+  const probeToken = ++recordingProbeToken;
+  showRecordingQualityLoadingModal(channelId, options);
   setLocalRecordingStatus(channelId, "preparing", "Checking FFmpeg and stream qualities...");
   let data;
   try {
@@ -1302,10 +1373,13 @@ async function prepareRecording(channelId, options = {}) {
       body: JSON.stringify({ channel_id: channelId, recording_options: options }),
     });
   } catch (error) {
+    if (probeToken !== recordingProbeToken) return;
     setLocalRecordingStatus(channelId, "error", error.message);
+    showRecordingQualityErrorModal(channelId, error.message, options);
     showToast(error.message, "error");
     return;
   }
+  if (probeToken !== recordingProbeToken) return;
   if (!data.ffmpeg?.available) {
     pendingRecording = { channel_id: channelId, options };
     setLocalRecordingStatus(channelId, "error", data.ffmpeg?.message || "FFmpeg is not installed or was not found.");
@@ -1314,11 +1388,17 @@ async function prepareRecording(channelId, options = {}) {
   }
 
   const qualities = data.qualities || [];
-  if (qualities.length > 1) {
-    setLocalRecordingStatus(channelId, "starting", "Starting FFmpeg with selected quality preference...");
+  if (data.quality_unavailable) {
+    setLocalRecordingStatus(channelId, "waiting", data.message || "Selected quality is not available for this stream.", {
+      quality_label: data.requested_quality_label || "",
+    });
+    showRecordingQualityModal({ ...data, channel_id: channelId, options });
+    return;
   }
-
-  await startRecording(channelId, data.selected_quality_id || qualities[0]?.id || "source", options);
+  setLocalRecordingStatus(channelId, "waiting", "Choose a source quality to start recording.", {
+    quality_label: data.selected_quality_id ? "Ready" : "",
+  });
+  showRecordingQualityModal({ ...data, channel_id: channelId, options });
 }
 
 async function startRecording(channelId, qualityId, options = {}) {
@@ -1397,7 +1477,12 @@ async function handleRecordChannel(channelId) {
     showToast("Stop the current recording before starting another.", "error");
     return;
   }
-  openRecordingOptionsModal(channelId);
+  const options = {
+    recording_dir: recordingPathValue(),
+    recording_default_quality: appState?.settings?.recording_default_quality || "best",
+  };
+  pendingRecording = { channel_id: channelId, options };
+  await prepareRecording(channelId, options);
 }
 
 async function openRecordingFile() {
@@ -2162,6 +2247,12 @@ function bindEvents() {
     });
   });
 
+  els.recordingQualityDirPickerButton.addEventListener("click", () => {
+    pickRecordingDirectory(els.recordingQualityDirPickerButton, {
+      targetInput: els.recordingQualityDirInput,
+    });
+  });
+
   els.browseFfmpegModalButton.addEventListener("click", () => {
     pickFfmpegExecutable(els.browseFfmpegModalButton, { save: true, retryRecording: true });
   });
@@ -2177,7 +2268,9 @@ function bindEvents() {
   els.startRecordingQualityButton.addEventListener("click", async () => {
     if (!pendingRecording?.channel_id) return;
     try {
-      await startRecording(pendingRecording.channel_id, els.recordingQualitySelect.value, pendingRecording.options || {});
+      const options = recordingQualityOptionsFromModal();
+      pendingRecording.options = options;
+      await startRecording(pendingRecording.channel_id, els.recordingQualitySelect.value, options);
     } catch (error) {
       showToast(error.message, "error");
     }
@@ -2457,7 +2550,9 @@ function initEls() {
     "toggleApiKeyButton", "ffmpegModal", "ffmpegModalMessage", "ffmpegInstallStatus", "browseFfmpegModalButton",
     "installFfmpegModalButton", "recordingOptionsModal", "recordingOptionsChannel", "recordingOptionDirInput", "recordingOptionDirPickerButton",
     "recordingOptionQualitySelect", "confirmRecordingOptionsButton", "recordingQualityModal", "recordingQualityChannel", "recordingQualitySelect",
-    "startRecordingQualityButton", "recordingFooter", "recordingFooterIcon", "recordingFooterTitle", "recordingFooterMeta",
+    "recordingQualityTitle", "recordingQualityLoading", "recordingQualityLoadingText", "recordingQualityFields", "recordingQualityControls",
+    "recordingQualityMessage", "recordingQualityDirInput", "recordingQualityDirPickerButton", "recordingQualityActions", "startRecordingQualityButton",
+    "recordingFooter", "recordingFooterIcon", "recordingFooterTitle", "recordingFooterMeta",
     "recordingOpenButton", "recordingRevealButton", "recordingStopButton", "recordingDismissButton",
     "recordingDismissModal", "confirmDismissRecordingButton", "aboutButton", "aboutModal", "aboutVersion", "aboutRepoLink",
     "checkUpdatesButton", "aboutInstallUpdateButton", "updateStatus", "updateModal",

@@ -7,6 +7,7 @@ import threading
 import time
 
 from iptv_multi_player import config
+from iptv_multi_player.recording import reset_recording_session_log
 from iptv_multi_player.state import ensure_data_dirs
 from iptv_multi_player.web import app
 
@@ -72,6 +73,7 @@ def main() -> None:
     args = parser.parse_args()
 
     ensure_data_dirs()
+    reset_recording_session_log()
     port = args.port or find_free_port(args.host)
     url = f"http://{args.host}:{port}"
 

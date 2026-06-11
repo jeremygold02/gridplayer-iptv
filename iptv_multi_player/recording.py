@@ -14,7 +14,7 @@ from typing import Any
 from urllib.parse import urljoin
 import urllib.request
 
-from .config import APP_DIR, HTTP_TIMEOUT_SECONDS
+from .config import DATA_DIR, HTTP_TIMEOUT_SECONDS
 from .players import launch_player, player_label
 
 
@@ -31,6 +31,7 @@ QUALITY_IDS = {item["id"] for item in QUALITY_PRESETS}
 FFMPEG_WINGET_ID = "Gyan.FFmpeg"
 HLS_ATTR_RE = re.compile(r'([A-Za-z0-9-]+)=("[^"]*"|[^,]*)')
 INVALID_FILENAME_CHARS = set('<>:"/\\|?*')
+RECORDING_LOG_PATH = DATA_DIR / "recording_session.log"
 
 
 class RecordingError(RuntimeError):
@@ -42,6 +43,10 @@ class FfmpegMissingError(RecordingError):
 
 
 class FfmpegInstallError(RecordingError):
+    pass
+
+
+class QualityUnavailableError(RecordingError):
     pass
 
 
@@ -84,6 +89,7 @@ class ActiveRecording:
     output_path: Path
     process: subprocess.Popen
     output_handle: Any
+    log_handle: Any
     command: list[str]
     started_at: float
     retry_count: int = 0
@@ -196,6 +202,7 @@ def public_recording_config(settings: dict[str, Any]) -> dict[str, Any]:
         "ffmpeg": public_ffmpeg(settings),
         "default_dir": str(default_recording_dir()),
         "effective_dir": str(effective_recording_dir(settings, create=False)),
+        "log_path": str(recording_log_path()),
         "quality_presets": list(QUALITY_PRESETS),
     }
 
@@ -227,6 +234,33 @@ def recording_path(channel_name: str, settings: dict[str, Any]) -> Path:
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     base = f"{timestamp} - {sanitize_filename(channel_name)}"
     return directory / f"{base}.ts"
+
+
+def recording_log_path() -> Path:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    return RECORDING_LOG_PATH
+
+
+def reset_recording_session_log() -> None:
+    path = recording_log_path()
+    timestamp = datetime.now().isoformat(timespec="seconds")
+    path.write_text(f"[{timestamp}] IPTV Multi Player recording session started\n", encoding="utf-8")
+
+
+def append_recording_log(title: str, lines: list[Any] | None = None) -> None:
+    try:
+        path = recording_log_path()
+        timestamp = datetime.now().isoformat(timespec="seconds")
+        with path.open("a", encoding="utf-8", errors="replace") as handle:
+            handle.write(f"\n[{timestamp}] {title}\n")
+            for line in lines or []:
+                handle.write(f"{line}\n")
+    except OSError:
+        pass
+
+
+def command_text(command: list[str]) -> str:
+    return " ".join(str(part) for part in command)
 
 
 def run_hidden_kwargs() -> dict[str, Any]:
@@ -288,6 +322,7 @@ def quality_label(height: int | None, width: int | None, bitrate: int | None, fa
 
 
 def fetch_hls_master(url: str) -> tuple[str, str]:
+    append_recording_log("hls master fetch", [url])
     request = urllib.request.Request(
         url,
         headers={
@@ -299,8 +334,20 @@ def fetch_hls_master(url: str) -> tuple[str, str]:
         content_type = str(response.headers.get("Content-Type", "")).lower()
         final_url = response.geturl()
         raw = response.read(2_000_000)
+        status = getattr(response, "status", "")
     text = raw.decode("utf-8-sig", errors="replace")
+    append_recording_log(
+        "hls master response",
+        [
+            f"status={status}",
+            f"content_type={content_type}",
+            f"final_url={final_url}",
+            f"bytes={len(raw)}",
+            f"has_extm3u={'#EXTM3U' in text}",
+        ],
+    )
     if "#EXTM3U" not in text and "mpegurl" not in content_type:
+        append_recording_log("hls master rejected", [text[:1000]])
         return "", final_url
     return text, final_url
 
@@ -311,7 +358,8 @@ def parse_hls_variants(url: str) -> list[QualityOption]:
 
     try:
         text, base_url = fetch_hls_master(url)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - probing should fall back to ffprobe
+        append_recording_log("hls variant parse failed", [f"{type(exc).__name__}: {exc}"])
         return []
 
     lines = [line.strip() for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
@@ -364,6 +412,7 @@ def run_ffprobe(ffprobe_path: str, url: str) -> dict[str, Any]:
         "json",
         url,
     ]
+    append_recording_log("ffprobe start", [command_text(command)])
     try:
         result = subprocess.run(
             command,
@@ -374,7 +423,18 @@ def run_ffprobe(ffprobe_path: str, url: str) -> dict[str, Any]:
             **run_hidden_kwargs(),
         )
     except subprocess.TimeoutExpired as exc:
+        append_recording_log("ffprobe timeout", [command_text(command)])
         raise RecordingError("Could not probe stream before the timeout.") from exc
+    append_recording_log(
+        "ffprobe finished",
+        [
+            f"returncode={result.returncode}",
+            "stdout:",
+            result.stdout or "",
+            "stderr:",
+            result.stderr or "",
+        ],
+    )
     if result.returncode != 0:
         raise RecordingError((result.stderr or "Could not probe stream.").strip())
     try:
@@ -462,16 +522,20 @@ def quality_sort_key(option: QualityOption) -> tuple[int, int]:
     return (option.height or 0, option.bitrate or 0)
 
 
-def choose_quality(qualities: list[QualityOption], default_quality: str, requested_quality: str | None = None) -> QualityOption:
+def quality_preset(value: Any) -> dict[str, Any]:
+    preset_id = sanitize_recording_quality(value)
+    return next((preset for preset in QUALITY_PRESETS if preset["id"] == preset_id), QUALITY_PRESETS[0])
+
+
+def quality_preset_label(value: Any) -> str:
+    return str(quality_preset(value)["label"])
+
+
+def choose_quality_for_preset(qualities: list[QualityOption], preset_id: str) -> QualityOption | None:
     if not qualities:
         return QualityOption(id="source", label="Source")
 
-    if requested_quality:
-        selected = next((quality for quality in qualities if quality.id == requested_quality), None)
-        if selected:
-            return selected
-
-    default_quality = sanitize_recording_quality(default_quality)
+    default_quality = sanitize_recording_quality(preset_id)
     sorted_qualities = sorted(qualities, key=quality_sort_key, reverse=True)
     if default_quality == "best":
         return sorted_qualities[0]
@@ -484,7 +548,34 @@ def choose_quality(qualities: list[QualityOption], default_quality: str, request
         for quality in sorted_qualities
         if quality.height is not None and quality.height <= max_height
     ]
-    return capped[0] if capped else sorted_qualities[-1]
+    return capped[0] if capped else None
+
+
+def choose_quality(qualities: list[QualityOption], default_quality: str, requested_quality: str | None = None) -> QualityOption:
+    if not qualities:
+        return QualityOption(id="source", label="Source")
+
+    if requested_quality:
+        selected = next((quality for quality in qualities if quality.id == requested_quality), None)
+        if selected:
+            return selected
+
+    selected = choose_quality_for_preset(qualities, default_quality)
+    if selected:
+        return selected
+
+    raise QualityUnavailableError(f"{quality_preset_label(default_quality)} is not available for this stream.")
+
+
+def quality_unavailable_payload(qualities: list[QualityOption], requested_quality: str) -> dict[str, Any]:
+    label = quality_preset_label(requested_quality)
+    return {
+        "quality_unavailable": True,
+        "requested_quality_id": sanitize_recording_quality(requested_quality),
+        "requested_quality_label": label,
+        "message": f"{label} is not available for this stream. Choose one of the available qualities.",
+        "qualities": [quality.public() for quality in qualities],
+    }
 
 
 def recording_map_args(quality: QualityOption) -> list[str]:
@@ -503,22 +594,30 @@ def retry_delay_seconds(retry_count: int) -> int:
     return 10
 
 
-def close_output_handle(active: ActiveRecording) -> None:
+def close_recording_handles(active: ActiveRecording) -> None:
     try:
         active.output_handle.close()
     except OSError:
         pass
+    try:
+        active.log_handle.close()
+    except OSError:
+        pass
 
 
-def launch_recording_process(command: list[str], output_path: Path, append: bool) -> tuple[subprocess.Popen, Any]:
+def launch_recording_process(command: list[str], output_path: Path, append: bool) -> tuple[subprocess.Popen, Any, Any]:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_handle = output_path.open("ab" if append else "wb")
+    log_handle = recording_log_path().open("a", encoding="utf-8", errors="replace")
+    log_handle.write(f"\n[{datetime.now().isoformat(timespec='seconds')}] ffmpeg recording {'restart' if append else 'start'}\n")
+    log_handle.write(f"{command_text(command)}\n\n")
+    log_handle.flush()
     try:
         process = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
             stdout=output_handle,
-            stderr=subprocess.DEVNULL,
+            stderr=log_handle,
             close_fds=True,
             text=True,
             encoding="utf-8",
@@ -527,8 +626,9 @@ def launch_recording_process(command: list[str], output_path: Path, append: bool
         )
     except Exception:
         output_handle.close()
+        log_handle.close()
         raise
-    return process, output_handle
+    return process, output_handle, log_handle
 
 
 def probe_qualities(url: str, settings: dict[str, Any]) -> tuple[list[QualityOption], FfmpegInfo]:
@@ -610,19 +710,39 @@ class RecordingManager:
         code_text = "unknown exit code" if returncode is None else f"exit code {returncode}"
         active.retry_message = f"Stream cut out ({code_text}). Retrying automatically..."
         self._last_output_path = active.output_path
+        append_recording_log(
+            "ffmpeg exited",
+            [
+                f"channel={active.channel_name}",
+                f"returncode={returncode}",
+                f"retry_count={active.retry_count}",
+                f"retry_delay_seconds={delay}",
+                f"output_path={active.output_path}",
+            ],
+        )
 
     def _restart_active_locked(self, active: ActiveRecording) -> None:
         try:
-            process, output_handle = launch_recording_process(active.command, active.output_path, append=True)
+            process, output_handle, log_handle = launch_recording_process(active.command, active.output_path, append=True)
         except Exception as exc:  # noqa: BLE001 - keep retrying transient launch failures
             active.retry_count += 1
             delay = retry_delay_seconds(active.retry_count)
             active.retry_after = time.time() + delay
             active.retry_message = f"Could not restart recording: {exc}. Retrying automatically..."
+            append_recording_log(
+                "ffmpeg restart failed",
+                [
+                    f"channel={active.channel_name}",
+                    f"{type(exc).__name__}: {exc}",
+                    f"retry_count={active.retry_count}",
+                    f"retry_delay_seconds={delay}",
+                ],
+            )
             return
 
         active.process = process
         active.output_handle = output_handle
+        active.log_handle = log_handle
         active.retry_after = 0.0
         active.retry_message = ""
 
@@ -631,7 +751,7 @@ class RecordingManager:
             active = self._active
             returncode = active.process.returncode
             if not active.retry_after:
-                close_output_handle(active)
+                close_recording_handles(active)
                 self._schedule_retry_locked(active, returncode)
                 return
             if time.time() >= active.retry_after:
@@ -658,7 +778,27 @@ class RecordingManager:
                 }
 
         qualities, ffmpeg = probe_qualities(str(channel.get("url") or ""), settings)
-        selected = choose_quality(qualities, settings.get("recording_default_quality", "best"))
+        requested_quality = sanitize_recording_quality(settings.get("recording_default_quality", "best"))
+        selected = choose_quality_for_preset(qualities, requested_quality)
+        quality_unavailable = selected is None
+        if quality_unavailable:
+            append_recording_log(
+                "recording quality unavailable",
+                [
+                    f"channel={channel.get('name') or 'Recording'}",
+                    f"requested={quality_preset_label(requested_quality)}",
+                    "available:",
+                    *[quality.label for quality in qualities],
+                ],
+            )
+            selected = sorted(qualities, key=quality_sort_key, reverse=True)[0] if qualities else QualityOption(id="source", label="Source")
+            unavailable = quality_unavailable_payload(qualities, requested_quality)
+        else:
+            unavailable = {
+                "quality_unavailable": False,
+                "requested_quality_id": requested_quality,
+                "requested_quality_label": quality_preset_label(requested_quality),
+            }
         return {
             "ffmpeg": {
                 "available": ffmpeg.available,
@@ -672,6 +812,7 @@ class RecordingManager:
             "selected_quality_id": selected.id,
             "can_start": ffmpeg.available,
             "message": ffmpeg.message,
+            **unavailable,
         }
 
     def start(self, channel: dict[str, Any], settings: dict[str, Any], quality_id: str | None) -> dict[str, Any]:
@@ -714,7 +855,7 @@ class RecordingManager:
             "pipe:1",
         ]
 
-        process, output_handle = launch_recording_process(command, output_path, append=False)
+        process, output_handle, log_handle = launch_recording_process(command, output_path, append=False)
 
         active = ActiveRecording(
             channel_id=str(channel.get("id") or ""),
@@ -724,6 +865,7 @@ class RecordingManager:
             output_path=output_path,
             process=process,
             output_handle=output_handle,
+            log_handle=log_handle,
             command=command,
             started_at=time.time(),
         )
@@ -731,6 +873,14 @@ class RecordingManager:
             self._active = active
             self._last_output_path = output_path
             self._last_status = None
+            append_recording_log(
+                "recording active",
+                [
+                    f"channel={active.channel_name}",
+                    f"quality={active.quality_label}",
+                    f"output_path={active.output_path}",
+                ],
+            )
             return public_status_from_active(active)
 
     def stop(self) -> dict[str, Any]:
@@ -757,13 +907,21 @@ class RecordingManager:
                     process.kill()
                     process.wait(timeout=4)
 
-        close_output_handle(active)
+        close_recording_handles(active)
         with self._lock:
             self._last_output_path = active.output_path
             self._active = None
             active.retry_after = 0.0
             active.retry_message = ""
             self._last_status = public_terminal_status(active, "stopped", "Recording stopped.")
+            append_recording_log(
+                "recording stopped",
+                [
+                    f"channel={active.channel_name}",
+                    f"returncode={process.returncode}",
+                    f"output_path={active.output_path}",
+                ],
+            )
             return self._last_status
 
     def active_or_last_path(self) -> Path | None:

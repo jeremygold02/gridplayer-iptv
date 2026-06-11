@@ -1306,6 +1306,39 @@ body.recording-footer-visible .detail-panel {
   white-space: nowrap;
 }
 
+.quality-warning {
+  margin: 10px 0 2px;
+  padding: 10px;
+  border: 1px solid rgba(250, 184, 74, 0.35);
+  background: rgba(250, 184, 74, 0.1);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.recording-quality-loading {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 18px 8px 8px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.recording-quality-loading p {
+  margin: 0;
+}
+
+.quality-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(16, 183, 164, 0.22);
+  border-top-color: var(--teal);
+  border-radius: 999px;
+  animation: game-spinner 0.8s linear infinite;
+}
+
 .path-input-row,
 .secret-input-row {
   display: grid;
