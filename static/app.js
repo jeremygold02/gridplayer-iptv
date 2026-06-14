@@ -537,6 +537,10 @@ function normalizedFilterText(value) {
   return ` ${String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()} `;
 }
 
+function normalizedExactFilterText(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function customFilterKind(filterId) {
   return `custom:${filterId}`;
 }
@@ -555,19 +559,70 @@ function filterDefinitionForKind(kind) {
   return builtInFilterPreset(kind) || customFilterFromKind(kind);
 }
 
+function customFilterSearchFields(channel) {
+  const game = gameInfo(channel);
+  return [channel.name, game.home, game.away].filter(Boolean);
+}
+
+function legacyCustomFilterOperator(value) {
+  const operator = String(value || "").trim();
+  return ["not_contains", "starts_with", "ends_with", "exact"].includes(operator) ? operator : "contains";
+}
+
+function customFilterRuleFromTerm(term, defaultOperator = "contains") {
+  const raw = String(term || "").trim();
+  if (!raw) return null;
+  const prefix = raw[0];
+  const prefixedOperators = {
+    "-": "not_contains",
+    "!": "not_contains",
+    "^": "starts_with",
+    "$": "ends_with",
+    "=": "exact",
+  };
+  const operator = prefixedOperators[prefix] || legacyCustomFilterOperator(defaultOperator);
+  const value = prefixedOperators[prefix] ? raw.slice(1).trim() : raw;
+  return value ? { operator, value } : null;
+}
+
+function customFilterRules(definition) {
+  return (definition.terms || [])
+    .map((term) => customFilterRuleFromTerm(term, definition.operator))
+    .filter(Boolean);
+}
+
+function fieldMatchesCustomFilterRule(field, rule) {
+  if (rule.operator === "contains" || rule.operator === "not_contains") {
+    return normalizedFilterText(field).includes(normalizedFilterText(rule.value));
+  }
+
+  const fieldText = normalizedExactFilterText(field);
+  const termText = normalizedExactFilterText(rule.value);
+  if (!fieldText || !termText) return false;
+  if (rule.operator === "starts_with") return fieldText.startsWith(termText);
+  if (rule.operator === "ends_with") return fieldText.endsWith(termText);
+  if (rule.operator === "exact") return fieldText === termText;
+  return false;
+}
+
 function channelMatchesFilterDefinition(channel, definition) {
   if (!definition) return true;
   const categories = definition.categories || (definition.category && definition.category !== "all" ? [definition.category] : []);
   if (categories.length && !categories.includes(channel.group)) {
     return false;
   }
-  const game = gameInfo(channel);
-  const text = normalizedFilterText([
-    channel.name,
-    game.home,
-    game.away,
-  ].join(" "));
-  return (definition.terms || []).some((term) => text.includes(normalizedFilterText(term)));
+  const rules = customFilterRules(definition);
+  const fields = customFilterSearchFields(channel);
+  if (!rules.length) return true;
+
+  const negativeRules = rules.filter((rule) => rule.operator === "not_contains");
+  if (negativeRules.some((rule) => fields.some((field) => fieldMatchesCustomFilterRule(field, rule)))) {
+    return false;
+  }
+
+  const positiveRules = rules.filter((rule) => rule.operator !== "not_contains");
+  if (!positiveRules.length) return true;
+  return positiveRules.some((rule) => fields.some((field) => fieldMatchesCustomFilterRule(field, rule)));
 }
 
 function isNbaChannel(channel) {

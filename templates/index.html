@@ -172,16 +172,31 @@
         </div>
         <label>
           <span>Name</span>
-          <input id="customFilterNameInput" type="text" placeholder="NBA">
+          <input id="customFilterNameInput" type="text" placeholder="My Filter">
         </label>
         <label>
           <span>Category</span>
           <select id="customFilterCategorySelect"></select>
         </label>
-        <label>
-          <span>Channel contains</span>
-          <textarea id="customFilterTermsInput" rows="5" placeholder="Lakers, Knicks, Celtics"></textarea>
-        </label>
+        <div class="modal-field">
+          <div class="field-label-row">
+            <span id="customFilterTermsLabel">Terms</span>
+            <span class="help-tooltip">
+              <button class="inline-help-button" id="customFilterTermsHelpButton" type="button" aria-label="Search operator help" aria-describedby="customFilterTermsHelp">
+                <span class="material-icons" aria-hidden="true">help</span>
+              </button>
+              <span class="search-operator-help" id="customFilterTermsHelp" role="tooltip">
+                <span><strong>text</strong><span>Contains this text.</span></span>
+                <span><strong>-text</strong><span>Does not contain this text.</span></span>
+                <span><strong>^text</strong><span>Starts with this text.</span></span>
+                <span><strong>$text</strong><span>Ends with this text.</span></span>
+                <span><strong>=text</strong><span>Exact channel or team name.</span></span>
+                <span class="operator-help-note">Separate terms with commas or new lines. Matching checks channel names and parsed team names.</span>
+              </span>
+            </span>
+          </div>
+          <textarea id="customFilterTermsInput" rows="5" placeholder="text, -text, ^text" aria-labelledby="customFilterTermsLabel"></textarea>
+        </div>
         <label>
           <span>Preset</span>
           <select id="customFilterPresetSelect"></select>

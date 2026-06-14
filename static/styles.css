@@ -1212,6 +1212,92 @@ body.recording-footer-visible .detail-panel {
   font-weight: 700;
 }
 
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.inline-help-button {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.inline-help-button:hover,
+.inline-help-button:focus-visible {
+  border-color: rgba(16, 183, 164, 0.5);
+  background: rgba(16, 183, 164, 0.1);
+  color: var(--teal);
+  outline: 0;
+}
+
+.inline-help-button .material-icons {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+}
+
+.help-tooltip {
+  position: relative;
+  display: inline-grid;
+}
+
+.search-operator-help {
+  position: absolute;
+  z-index: 120;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  width: min(340px, calc(100vw - 64px));
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  background: #0e1313;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.36);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  visibility: hidden;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.help-tooltip:hover .search-operator-help,
+.help-tooltip:focus-within .search-operator-help {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  visibility: visible;
+}
+
+.search-operator-help > span:not(.operator-help-note) {
+  display: grid;
+  gap: 2px;
+}
+
+.search-operator-help strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.operator-help-note {
+  display: block;
+  margin: 2px 0 0;
+  color: var(--subtle);
+}
+
 .modal input[type="text"],
 .modal input[type="url"],
 .modal input[type="password"],
