@@ -603,7 +603,6 @@ def api_settings():
         "grid_size",
         "selected_player",
         "gridplayer_path",
-        "gridplayer_flags",
         "mpv_path",
         "mpv_flags",
         "vlc_path",

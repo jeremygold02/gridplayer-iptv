@@ -45,6 +45,8 @@ def find_player(player_id: str, settings: dict[str, Any]) -> Path | None:
 
 def player_flags(player_id: str, settings: dict[str, Any]) -> str:
     config = PLAYER_CONFIG[normalize_player_id(player_id)]
+    if not config.get("supports_flags", True):
+        return ""
     return str(settings.get(config["flags_key"], "") or "").strip()
 
 
@@ -79,7 +81,8 @@ def public_players(settings: dict[str, Any]) -> dict[str, Any]:
             "configured_flags": configured_flags,
             "configured_available": bool(configured_path and Path(configured_path).is_file()),
             "path_key": config["path_key"],
-            "flags_key": config["flags_key"],
+            "flags_key": config["flags_key"] if config.get("supports_flags", True) else "",
+            "supports_flags": bool(config.get("supports_flags", True)),
         })
     return {"selected": selected, "items": items}
 

@@ -10,7 +10,6 @@ const PLAYER_PATH_FIELDS = {
   vlc: "vlc_path",
 };
 const PLAYER_FLAG_FIELDS = {
-  gridplayer: "gridplayer_flags",
   mpv: "mpv_flags",
   vlc: "vlc_flags",
 };
@@ -20,7 +19,6 @@ const PLAYER_PATH_INPUT_IDS = {
   vlc: "vlcPathInput",
 };
 const PLAYER_FLAG_PRESETS = {
-  gridplayer: [],
   mpv: [
     { flag: "--fullscreen", label: "Fullscreen" },
     { flag: "--ontop", label: "Always on top" },

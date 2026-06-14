@@ -30,7 +30,6 @@ def default_state() -> dict[str, Any]:
             "grid_size": "3x3",
             "selected_player": DEFAULT_PLAYER,
             "gridplayer_path": "",
-            "gridplayer_flags": "",
             "mpv_path": "",
             "mpv_flags": "",
             "vlc_path": "",
