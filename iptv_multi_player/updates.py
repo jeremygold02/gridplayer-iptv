@@ -26,6 +26,9 @@ class UpdateError(RuntimeError):
     pass
 
 
+GITHUB_API_TIMEOUT_SECONDS = 30
+
+
 def can_install_updates() -> bool:
     return sys.platform == "win32" and bool(getattr(sys, "frozen", False))
 
@@ -39,8 +42,11 @@ def github_json(path: str) -> Any:
             "X-GitHub-Api-Version": "2022-11-28",
         },
     )
-    with urllib.request.urlopen(request, timeout=8) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=GITHUB_API_TIMEOUT_SECONDS) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except TimeoutError as exc:
+        raise UpdateError("GitHub took too long to respond. Try again in a moment.") from exc
 
 
 def latest_release() -> dict[str, Any] | None:
