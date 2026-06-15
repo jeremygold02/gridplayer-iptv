@@ -4,20 +4,6 @@ const BROWSER_PREF_KEY = "iptv-multi-player-ui";
 const SIDEBAR_MIN_WIDTH = 180;
 const SIDEBAR_MAX_WIDTH = 420;
 const ROW_DOUBLE_CLICK_MS = 450;
-const PLAYER_PATH_FIELDS = {
-  gridplayer: "gridplayer_path",
-  mpv: "mpv_path",
-  vlc: "vlc_path",
-};
-const PLAYER_FLAG_FIELDS = {
-  mpv: "mpv_flags",
-  vlc: "vlc_flags",
-};
-const PLAYER_PATH_INPUT_IDS = {
-  gridplayer: "gridplayerPathInput",
-  mpv: "mpvPathInput",
-  vlc: "vlcPathInput",
-};
 const PLAYER_FLAG_PRESETS = {
   mpv: [
     { flag: "--fullscreen", label: "Fullscreen" },
@@ -91,6 +77,7 @@ let pendingRecording = null;
 let recordingProbeToken = 0;
 let pendingSourceRemovalId = null;
 let pendingSourceRenameId = null;
+let pendingPlayerEditorId = null;
 let pendingPlayerFlagsId = null;
 let categoryDrag = null;
 let suppressCategoryClick = false;
@@ -130,39 +117,62 @@ function playerById(playerId) {
 
 function selectablePlayers() {
   return (appState?.players?.items || []).filter((player) => (
-    PLAYER_PATH_FIELDS[player.id]
-    && player.available
+    player.available
     && player.path
   ));
 }
 
 function selectedPlayerId() {
-  const selected = appState?.players?.selected || appState?.settings?.selected_player || "gridplayer";
+  const selected = appState?.players?.selected || appState?.settings?.selected_player || "";
   const options = selectablePlayers();
   if (options.some((player) => player.id === selected)) return selected;
   if (options.length) return options[0].id;
-  return PLAYER_PATH_FIELDS[selected] ? selected : "gridplayer";
+  return selected;
 }
 
 function selectedPlayerLabel() {
-  return playerById(selectedPlayerId())?.label || "GridPlayer";
+  return playerById(selectedPlayerId())?.label || "Player";
 }
 
-function playerPathValue(playerId) {
-  const pathField = PLAYER_PATH_FIELDS[playerId];
-  if (!pathField) return "";
-  return appState?.settings?.[pathField] || playerById(playerId)?.path || "";
+function configuredPlayers() {
+  return (appState?.players?.items || []).map((player) => ({
+    id: player.id,
+    name: player.name || player.label || "",
+    path: player.configured_path || player.path || "",
+    flags: player.configured_flags || "",
+  }));
 }
 
-function playerPathInput(playerId) {
-  const inputId = PLAYER_PATH_INPUT_IDS[playerId];
-  return inputId ? els[inputId] : null;
+function executableStem(path) {
+  return String(path || "")
+    .split(/[\\/]/)
+    .pop()
+    .replace(/\.exe$/i, "")
+    .trim();
+}
+
+function makeClientPlayerId(name, path) {
+  const base = String(name || executableStem(path) || "player")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 50) || "player";
+  return `${base}-${Date.now().toString(36)}`;
+}
+
+function normalizedPlayerFromEditor(existingId = "") {
+  const path = els.playerEditorPathInput.value.trim();
+  const name = els.playerEditorNameInput.value.trim() || executableStem(path);
+  return {
+    id: existingId || makeClientPlayerId(name, path),
+    name,
+    path,
+    flags: els.playerEditorFlagsInput.value.trim(),
+  };
 }
 
 function playerFlagValue(playerId) {
-  const flagField = PLAYER_FLAG_FIELDS[playerId];
-  if (!flagField) return "";
-  return appState?.settings?.[flagField] || playerById(playerId)?.configured_flags || "";
+  return playerById(playerId)?.configured_flags || "";
 }
 
 function channelById(channelId) {
@@ -963,6 +973,7 @@ function render() {
   renderCustomFilters();
   renderStatus();
   renderPlayerSelect();
+  renderPlayerSettingsList();
   renderSortHeaders();
   renderSources();
   renderCategories();
@@ -1061,6 +1072,43 @@ function renderPlayerSelect() {
   if (picker) {
     picker.hidden = options.length <= 1;
   }
+}
+
+function renderPlayerSettingsList() {
+  if (!els.playerSettingsList) return;
+  const players = configuredPlayers();
+  if (!players.length) {
+    els.playerSettingsList.innerHTML = `<div class="player-settings-empty">No players configured</div>`;
+    return;
+  }
+
+  els.playerSettingsList.innerHTML = players.map((player) => {
+    const hasFlags = Boolean(player.flags);
+    return `
+      <div class="player-settings-row" data-player-row="${escapeHtml(player.id)}">
+        <div class="player-settings-main">
+          <div class="player-settings-name">${escapeHtml(player.name)}</div>
+          <div class="player-settings-path">${escapeHtml(player.path)}</div>
+        </div>
+        <div class="player-settings-actions">
+          <button class="icon-button ${hasFlags ? "active" : ""}" data-player-flag-editor="${escapeHtml(player.id)}" type="button" title="${hasFlags ? "Edit flags" : "Add flags"}" aria-label="${hasFlags ? "Edit flags" : "Add flags"}">
+            ${iconHtml("flag")}
+          </button>
+          <button class="icon-button" data-player-path-picker="${escapeHtml(player.id)}" type="button" title="Browse for executable" aria-label="Browse for executable">
+            ${iconHtml("folder_open")}
+          </button>
+          <button class="icon-button" data-player-edit="${escapeHtml(player.id)}" type="button" title="Edit player" aria-label="Edit player">
+            ${iconHtml("edit")}
+          </button>
+          <button class="icon-button danger-button" data-player-delete="${escapeHtml(player.id)}" type="button" title="Delete player" aria-label="Delete player">
+            ${iconHtml("delete")}
+          </button>
+        </div>
+      </div>
+    `;
+  }).join("");
+  syncPlayerPathPickerButtons();
+  syncPlayerFlagButtons();
 }
 
 function renderSources() {
@@ -1551,16 +1599,12 @@ async function revealRecordingFile() {
 }
 
 function fillSettingsForm() {
-  els.gridplayerPathInput.value = playerPathValue("gridplayer");
-  els.mpvPathInput.value = playerPathValue("mpv");
-  els.vlcPathInput.value = playerPathValue("vlc");
+  renderPlayerSettingsList();
   els.apiSportsKeyInput.value = appState?.api_sports?.key || "";
   els.ffmpegPathInput.value = appState?.settings?.ffmpeg_path || ffmpegStatus().path || "";
   els.recordingDirInput.value = recordingPathValue();
   fillRecordingQualityPresets();
   renderFfmpegStatus();
-  syncPlayerPathPickerButtons();
-  syncPlayerFlagButtons();
   setApiKeyVisibility(false);
 }
 
@@ -1616,8 +1660,14 @@ function syncPlayerFlagButtons() {
   });
 }
 
+function playerFlagPresetKey(playerId) {
+  const player = playerById(playerId);
+  const stem = executableStem(player?.configured_path || player?.path || "").toLowerCase();
+  return PLAYER_FLAG_PRESETS[stem] ? stem : String(player?.label || "").trim().toLowerCase();
+}
+
 function renderPlayerFlagPresets(playerId) {
-  const presets = PLAYER_FLAG_PRESETS[playerId] || [];
+  const presets = PLAYER_FLAG_PRESETS[playerFlagPresetKey(playerId)] || [];
   if (!presets.length) {
     els.playerFlagPresetList.innerHTML = `<div class="flag-preset-empty">No built-in presets for this player. You can paste custom flags above.</div>`;
     return;
@@ -1641,12 +1691,12 @@ function appendPlayerFlag(flag) {
 }
 
 function openPlayerFlagsModal(playerId) {
-  if (!PLAYER_FLAG_FIELDS[playerId]) return;
+  if (!playerById(playerId)) return;
   pendingPlayerFlagsId = playerId;
   const label = playerById(playerId)?.label || playerId;
   els.playerFlagsTitle.textContent = `${label} Flags`;
   els.playerFlagsInput.value = playerFlagValue(playerId);
-  els.playerFlagsInput.placeholder = playerId === "vlc" ? "Example: --autoscale" : "Example: --fullscreen";
+  els.playerFlagsInput.placeholder = playerFlagPresetKey(playerId) === "vlc" ? "Example: --autoscale" : "Example: --fullscreen";
   els.playerFlagsHelp.textContent = `Flags are passed to ${label} before the stream URL when it launches.`;
   renderPlayerFlagPresets(playerId);
   openModal(els.playerFlagsModal);
@@ -1659,18 +1709,17 @@ function closePlayerFlagsModal() {
 
 async function savePlayerFlags() {
   const playerId = pendingPlayerFlagsId;
-  const field = PLAYER_FLAG_FIELDS[playerId];
-  if (!field) return;
-  await saveSettingsPatch({ [field]: els.playerFlagsInput.value.trim() }, { skipRender: true });
-  syncPlayerFlagButtons();
+  if (!playerId) return;
+  const players = configuredPlayers().map((player) => (
+    player.id === playerId ? { ...player, flags: els.playerFlagsInput.value.trim() } : player
+  ));
+  await savePlayers(players, { selectedPlayer: appState?.players?.selected || selectedPlayerId(), skipRender: true });
+  renderPlayerSettingsList();
   closePlayerFlagsModal();
   showToast(`${playerById(playerId)?.label || "Player"} flags saved`);
 }
 
 async function pickPlayerExecutable(playerId, button) {
-  const input = playerPathInput(playerId);
-  if (!input) return;
-
   button.disabled = true;
   try {
     const data = await api("/api/select-player-executable", {
@@ -1678,8 +1727,13 @@ async function pickPlayerExecutable(playerId, button) {
       body: JSON.stringify({ player: playerId }),
     });
     if (data.path) {
-      input.value = data.path;
-      input.focus();
+      const players = configuredPlayers().map((player) => (
+        player.id === playerId
+          ? { ...player, path: data.path, name: player.name || executableStem(data.path) }
+          : player
+      ));
+      await savePlayers(players, { selectedPlayer: appState?.players?.selected || selectedPlayerId() });
+      showToast("Player path saved");
     }
   } catch (error) {
     showToast(error.message, "error");
@@ -1698,6 +1752,87 @@ async function saveSettingsPatch(patch, options = {}) {
     render();
   }
   return data.state;
+}
+
+async function savePlayers(players, options = {}) {
+  const payload = { players };
+  if (options.selectedPlayer !== undefined) {
+    payload.selected_player = options.selectedPlayer;
+  }
+  return saveSettingsPatch(payload, options);
+}
+
+function openPlayerEditor(playerId = "") {
+  const player = playerId ? configuredPlayers().find((item) => item.id === playerId) : null;
+  pendingPlayerEditorId = player?.id || "";
+  els.playerEditorTitle.textContent = player ? "Edit Player" : "Add Player";
+  els.playerEditorNameInput.value = player?.name || "";
+  els.playerEditorPathInput.value = player?.path || "";
+  els.playerEditorFlagsInput.value = player?.flags || "";
+  els.playerEditorBrowseButton.disabled = !desktopRuntime();
+  els.playerEditorBrowseButton.title = desktopRuntime()
+    ? "Browse for player executable"
+    : "File picker is available in the desktop app";
+  els.playerEditorBrowseButton.setAttribute("aria-label", els.playerEditorBrowseButton.title);
+  openModal(els.playerEditorModal);
+}
+
+function closePlayerEditor() {
+  els.playerEditorModal.hidden = true;
+  pendingPlayerEditorId = null;
+}
+
+async function savePlayerEditor() {
+  const player = normalizedPlayerFromEditor(pendingPlayerEditorId || "");
+  if (!player.name) {
+    showToast("Enter a player name", "error");
+    return;
+  }
+  if (!/\.exe$/i.test(player.path)) {
+    showToast("Choose an .exe file", "error");
+    return;
+  }
+
+  const players = configuredPlayers();
+  const existingIndex = players.findIndex((item) => item.id === pendingPlayerEditorId);
+  if (existingIndex >= 0) {
+    players[existingIndex] = player;
+  } else {
+    players.push(player);
+  }
+  await savePlayers(players, { selectedPlayer: appState?.players?.selected || player.id });
+  closePlayerEditor();
+  showToast(existingIndex >= 0 ? "Player saved" : "Player added");
+}
+
+async function deletePlayer(playerId) {
+  const players = configuredPlayers().filter((player) => player.id !== playerId);
+  const selected = (appState?.players?.selected === playerId || selectedPlayerId() === playerId)
+    ? (players[0]?.id || "")
+    : appState?.players?.selected || selectedPlayerId();
+  await savePlayers(players, { selectedPlayer: selected });
+  showToast("Player deleted");
+}
+
+async function browsePlayerEditorPath() {
+  els.playerEditorBrowseButton.disabled = true;
+  try {
+    const data = await api("/api/select-player-executable", {
+      method: "POST",
+      body: JSON.stringify({ player: pendingPlayerEditorId || "" }),
+    });
+    if (data.path) {
+      els.playerEditorPathInput.value = data.path;
+      if (!els.playerEditorNameInput.value.trim()) {
+        els.playerEditorNameInput.value = executableStem(data.path);
+      }
+      els.playerEditorPathInput.focus();
+    }
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    els.playerEditorBrowseButton.disabled = false;
+  }
 }
 
 async function pickFfmpegExecutable(button, options = {}) {
@@ -2064,6 +2199,7 @@ function closeModals() {
   els.renameSourceModal.hidden = true;
   els.removeSourceModal.hidden = true;
   els.settingsModal.hidden = true;
+  els.playerEditorModal.hidden = true;
   els.playerFlagsModal.hidden = true;
   els.ffmpegModal.hidden = true;
   els.recordingOptionsModal.hidden = true;
@@ -2175,10 +2311,46 @@ function bindEvents() {
     button.addEventListener("click", closePlayerFlagsModal);
   });
 
-  document.querySelectorAll("[data-player-flag-editor]").forEach((button) => {
-    button.addEventListener("click", () => {
-      openPlayerFlagsModal(button.dataset.playerFlagEditor);
-    });
+  document.querySelectorAll("[data-close-player-editor]").forEach((button) => {
+    button.addEventListener("click", closePlayerEditor);
+  });
+
+  els.addPlayerButton.addEventListener("click", () => openPlayerEditor());
+
+  els.playerSettingsList.addEventListener("click", async (event) => {
+    const flagButton = event.target.closest("[data-player-flag-editor]");
+    if (flagButton) {
+      openPlayerFlagsModal(flagButton.dataset.playerFlagEditor);
+      return;
+    }
+
+    const pathButton = event.target.closest("[data-player-path-picker]");
+    if (pathButton) {
+      await pickPlayerExecutable(pathButton.dataset.playerPathPicker, pathButton);
+      return;
+    }
+
+    const editButton = event.target.closest("[data-player-edit]");
+    if (editButton) {
+      openPlayerEditor(editButton.dataset.playerEdit);
+      return;
+    }
+
+    const deleteButton = event.target.closest("[data-player-delete]");
+    if (deleteButton) {
+      await deletePlayer(deleteButton.dataset.playerDelete);
+    }
+  });
+
+  els.playerEditorBrowseButton.addEventListener("click", browsePlayerEditorPath);
+
+  els.playerEditorForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await savePlayerEditor();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
   });
 
   els.playerFlagPresetList.addEventListener("click", (event) => {
@@ -2256,9 +2428,7 @@ function bindEvents() {
       await refreshWithState(api("/api/settings", {
         method: "POST",
         body: JSON.stringify({
-          gridplayer_path: els.gridplayerPathInput.value,
-          mpv_path: els.mpvPathInput.value,
-          vlc_path: els.vlcPathInput.value,
+          players: configuredPlayers(),
           ffmpeg_path: els.ffmpegPathInput.value,
           recording_dir: els.recordingDirInput.value,
           recording_default_quality: els.recordingDefaultQualitySelect.value,
@@ -2278,12 +2448,6 @@ function bindEvents() {
 
   els.toggleApiKeyButton.addEventListener("click", () => {
     setApiKeyVisibility(!apiKeyVisible);
-  });
-
-  document.querySelectorAll("[data-player-path-picker]").forEach((button) => {
-    button.addEventListener("click", () => {
-      pickPlayerExecutable(button.dataset.playerPathPicker, button);
-    });
   });
 
   els.ffmpegPathPickerButton.addEventListener("click", () => {
@@ -2596,7 +2760,9 @@ function initEls() {
     "urlForm", "urlNameInput", "urlInput", "renameSourceModal", "renameSourceForm", "renameSourceInput",
     "confirmRenameSourceButton", "removeSourceModal", "removeSourceName",
     "confirmRemoveSourceButton", "settingsModal", "settingsForm",
-    "gridplayerPathInput", "mpvPathInput", "vlcPathInput", "ffmpegPathInput", "ffmpegPathPickerButton",
+    "playerSettingsList", "addPlayerButton", "playerEditorModal", "playerEditorForm", "playerEditorTitle",
+    "playerEditorNameInput", "playerEditorPathInput", "playerEditorFlagsInput", "playerEditorBrowseButton",
+    "ffmpegPathInput", "ffmpegPathPickerButton",
     "playerFlagsModal", "playerFlagsForm", "playerFlagsTitle", "playerFlagsInput", "playerFlagPresetList", "playerFlagsHelp",
     "recordingDirInput", "recordingDirPickerButton", "recordingDefaultQualitySelect",
     "ffmpegStatusTitle", "ffmpegStatusText", "installFfmpegSettingsButton", "apiSportsKeyInput",

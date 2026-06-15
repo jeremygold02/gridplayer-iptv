@@ -8,8 +8,8 @@ import urllib.error
 from flask import Flask, jsonify, render_template, request, send_file
 
 from . import config
-from .config import API_SPORTS_KEY_NAME, APP_DIR, ASSET_DIR, MAX_QUEUE_ITEMS, PLAYER_CONFIG, QUEUE_EXPORT_PATH
-from .players import launch_player, normalize_player_id, player_label, public_players
+from .config import API_SPORTS_KEY_NAME, APP_DIR, ASSET_DIR, MAX_QUEUE_ITEMS, QUEUE_EXPORT_PATH
+from .players import launch_player, normalize_player_id, normalize_player_settings, player_label, public_players, sanitize_players
 from .playlists import (
     fetch_playlist_url,
     remove_source_file,
@@ -60,7 +60,6 @@ def public_state(state: dict[str, Any] | None = None, enrich_games: bool = False
     settings = state.get("settings", {})
     sports_key = api_sports_key()
     players = public_players(settings)
-    gridplayer = next((player for player in players["items"] if player["id"] == "gridplayer"), None)
     pinned_categories = {
         str(category).strip()
         for category in settings.get("pinned_categories", [])
@@ -93,10 +92,6 @@ def public_state(state: dict[str, Any] | None = None, enrich_games: bool = False
             "name": APP_NAME,
             "version": APP_VERSION,
             "repo_url": GITHUB_REPO_URL,
-        },
-        "gridplayer": {
-            "available": bool(gridplayer and gridplayer["available"]),
-            "path": gridplayer["path"] if gridplayer else "",
         },
         "recording": {
             **public_recording_config(settings),
@@ -361,7 +356,7 @@ def api_open_channel():
             player, executable = launch_player([channel["url"]], state["settings"], payload.get("player"))
         except Exception as exc:  # noqa: BLE001
             return json_error(str(exc))
-        return jsonify({"success": True, "data": {"path": str(executable), "player": player, "label": player_label(player)}})
+        return jsonify({"success": True, "data": {"path": str(executable), "player": player, "label": player_label(player, state["settings"])}})
 
 
 @app.get("/api/recording/status")
@@ -450,7 +445,7 @@ def api_open_queue():
             player, executable = launch_player(urls, state["settings"])
         except Exception as exc:  # noqa: BLE001
             return json_error(str(exc))
-        return jsonify({"success": True, "data": {"path": str(executable), "player": player, "label": player_label(player), "count": len(urls)}})
+        return jsonify({"success": True, "data": {"path": str(executable), "player": player, "label": player_label(player, state["settings"]), "count": len(urls)}})
 
 
 @app.get("/api/export-queue")
@@ -472,8 +467,6 @@ def api_export_queue():
 def api_select_player_executable():
     payload = request.get_json(silent=True) or {}
     player = str(payload.get("player", "")).strip().lower()
-    if player not in PLAYER_CONFIG:
-        return json_error("Unknown player.", 404)
     if not config.DESKTOP_MODE:
         return json_error("The file picker is available in the desktop app.")
 
@@ -602,11 +595,7 @@ def api_settings():
     allowed = {
         "grid_size",
         "selected_player",
-        "gridplayer_path",
-        "mpv_path",
-        "mpv_flags",
-        "vlc_path",
-        "vlc_flags",
+        "players",
         "ffmpeg_path",
         "recording_dir",
         "recording_default_quality",
@@ -621,10 +610,14 @@ def api_settings():
         settings = state.setdefault("settings", default_state()["settings"])
         if "api_sports_key" in payload:
             write_env_value(API_SPORTS_KEY_NAME, str(payload.get("api_sports_key") or ""))
+        if "players" in payload:
+            settings["players"] = sanitize_players(payload.get("players"))
         for key in allowed:
             if key in payload:
+                if key == "players":
+                    continue
                 if key == "selected_player":
-                    settings[key] = normalize_player_id(payload[key])
+                    settings[key] = normalize_player_id(payload[key], settings)
                 elif key == "recording_default_quality":
                     settings[key] = sanitize_recording_quality(payload[key])
                 elif key.endswith("_path"):
@@ -677,5 +670,6 @@ def api_settings():
                     settings[key] = custom_filters
                 else:
                     settings[key] = payload[key]
+        state["settings"] = normalize_player_settings(settings)
         write_state(state)
         return jsonify({"success": True, "data": {"state": public_state()}})

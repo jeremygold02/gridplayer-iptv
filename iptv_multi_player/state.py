@@ -10,7 +10,6 @@ from typing import Any
 from .config import (
     API_SPORTS_KEY_NAME,
     DATA_DIR,
-    DEFAULT_PLAYER,
     ENV_PATH,
     ESPN_CONFIG,
     LIBRARY_PATH,
@@ -18,6 +17,7 @@ from .config import (
     SPORTS_CACHE_PATH,
     SPORTS_CONFIG,
 )
+from .players import normalize_player_settings
 
 def default_state() -> dict[str, Any]:
     return {
@@ -28,12 +28,8 @@ def default_state() -> dict[str, Any]:
         "selected_source_id": "all",
         "settings": {
             "grid_size": "3x3",
-            "selected_player": DEFAULT_PLAYER,
-            "gridplayer_path": "",
-            "mpv_path": "",
-            "mpv_flags": "",
-            "vlc_path": "",
-            "vlc_flags": "",
+            "selected_player": "",
+            "players": [],
             "ffmpeg_path": "",
             "recording_dir": "",
             "recording_default_quality": "best",
@@ -63,7 +59,11 @@ def read_state() -> dict[str, Any]:
 
     state = default_state()
     state.update(loaded)
-    state["settings"] = {**default_state()["settings"], **loaded.get("settings", {})}
+    loaded_settings = loaded.get("settings", {})
+    settings = {**default_state()["settings"], **loaded_settings}
+    if "players" not in loaded_settings:
+        settings.pop("players", None)
+    state["settings"] = normalize_player_settings(settings)
     state.setdefault("sources", [])
     state.setdefault("channels", {})
     state.setdefault("favorites", [])

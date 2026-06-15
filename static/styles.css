@@ -1360,6 +1360,79 @@ body.recording-footer-visible .detail-panel {
   display: none;
 }
 
+.settings-section {
+  display: grid;
+  gap: 10px;
+  margin: 13px 0;
+}
+
+.settings-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.compact-button {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.player-settings-list {
+  display: grid;
+  gap: 8px;
+}
+
+.player-settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  background: #101616;
+}
+
+.player-settings-main {
+  min-width: 0;
+}
+
+.player-settings-name {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-settings-path {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.player-settings-empty {
+  padding: 12px;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
 .recording-status-card {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto;

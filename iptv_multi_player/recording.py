@@ -943,7 +943,7 @@ class RecordingManager:
         if not path or not path.exists():
             raise RecordingError("Recording file was not found.")
         player, executable = launch_player([str(path)], settings, player_id)
-        return {"path": str(path), "player": player, "label": player_label(player)}
+        return {"path": str(path), "player": player, "label": player_label(player, settings)}
 
     def reveal_recording(self) -> dict[str, Any]:
         path = self.active_or_last_reveal_path()

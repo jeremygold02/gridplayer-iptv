@@ -32,56 +32,7 @@ ESPN_REFRESH_SECONDS = 30
 SPORTS_REFRESH_SECONDS = 15 * 60
 SPORTS_DAILY_CALL_LIMIT = 100
 DESKTOP_MODE = False
-DEFAULT_PLAYER = "gridplayer"
 API_SPORTS_KEY_NAME = "API_SPORTS_KEY"
-
-PLAYER_ORDER = ("gridplayer", "mpv", "vlc")
-PLAYER_CONFIG = {
-    "gridplayer": {
-        "label": "GridPlayer",
-        "path_key": "gridplayer_path",
-        "flags_key": "gridplayer_flags",
-        "supports_flags": False,
-        "env": "GRIDPLAYER_PATH",
-        "commands": ("GridPlayer", "gridplayer", "GridPlayer.exe", "gridplayer.exe"),
-        "paths": (
-            r"C:\Program Files\GridPlayer\GridPlayer.exe",
-            r"C:\Program Files (x86)\GridPlayer\GridPlayer.exe",
-            r"C:\Program Files\gridplayer\GridPlayer.exe",
-            r"C:\Program Files (x86)\gridplayer\GridPlayer.exe",
-            str(Path.home() / "AppData" / "Local" / "Programs" / "GridPlayer" / "GridPlayer.exe"),
-            str(Path.home() / "AppData" / "Local" / "Programs" / "gridplayer" / "GridPlayer.exe"),
-        ),
-    },
-    "mpv": {
-        "label": "MPV",
-        "path_key": "mpv_path",
-        "flags_key": "mpv_flags",
-        "supports_flags": True,
-        "env": "MPV_PATH",
-        "commands": ("mpv", "mpv.exe"),
-        "paths": (
-            r"C:\Program Files\mpv\mpv.exe",
-            r"C:\Program Files (x86)\mpv\mpv.exe",
-            str(Path.home() / "scoop" / "apps" / "mpv" / "current" / "mpv.exe"),
-            r"C:\ProgramData\scoop\apps\mpv\current\mpv.exe",
-            str(Path.home() / "AppData" / "Local" / "Programs" / "mpv" / "mpv.exe"),
-        ),
-    },
-    "vlc": {
-        "label": "VLC",
-        "path_key": "vlc_path",
-        "flags_key": "vlc_flags",
-        "supports_flags": True,
-        "env": "VLC_PATH",
-        "commands": ("vlc", "vlc.exe"),
-        "paths": (
-            r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe",
-            r"C:\Program Files\VideoLAN\VLC\vlc.exe",
-            str(Path.home() / "AppData" / "Local" / "Programs" / "VideoLAN" / "VLC" / "vlc.exe"),
-        ),
-    },
-}
 
 ATTR_RE = re.compile(r'([A-Za-z0-9_-]+)="([^"]*)"')
 MATCHUP_RE = re.compile(r"^(.+?)\s+(?:vs\.?|v|@)\s+(.+)$", re.IGNORECASE)

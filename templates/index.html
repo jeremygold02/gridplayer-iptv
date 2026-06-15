@@ -44,9 +44,6 @@
           <label class="player-picker">
             <span>Open With</span>
             <select id="playerSelect" aria-label="Open streams with">
-              <option value="gridplayer">GridPlayer</option>
-              <option value="mpv">MPV</option>
-              <option value="vlc">VLC</option>
             </select>
           </label>
           <div class="zoom-control" aria-label="Zoom controls">
@@ -289,38 +286,15 @@
           </button>
         </div>
         <div class="settings-panel" id="settingsGeneralPanel" data-settings-panel="general" role="tabpanel" aria-labelledby="settingsGeneralTab">
-          <div class="modal-field">
-            <span id="gridplayerPathLabel">GridPlayer executable</span>
-            <div class="path-input-row">
-              <input id="gridplayerPathInput" type="text" placeholder="Select or paste path to GridPlayer.exe" aria-labelledby="gridplayerPathLabel">
-              <button class="icon-button" data-player-path-picker="gridplayer" type="button" title="Browse for GridPlayer executable" aria-label="Browse for GridPlayer executable">
-                <span class="material-icons" aria-hidden="true">folder_open</span>
+          <div class="settings-section">
+            <div class="settings-section-head">
+              <span>Players</span>
+              <button class="secondary-button compact-button" id="addPlayerButton" type="button">
+                <span class="material-icons" aria-hidden="true">add</span>
+                <span>Add Player</span>
               </button>
             </div>
-          </div>
-          <div class="modal-field">
-            <span id="mpvPathLabel">MPV executable</span>
-            <div class="path-input-row player-path-input-row">
-              <input id="mpvPathInput" type="text" placeholder="Select or paste path to mpv.exe" aria-labelledby="mpvPathLabel">
-              <button class="icon-button" data-player-flag-editor="mpv" type="button" title="Edit MPV flags" aria-label="Edit MPV flags">
-                <span class="material-icons" aria-hidden="true">flag</span>
-              </button>
-              <button class="icon-button" data-player-path-picker="mpv" type="button" title="Browse for MPV executable" aria-label="Browse for MPV executable">
-                <span class="material-icons" aria-hidden="true">folder_open</span>
-              </button>
-            </div>
-          </div>
-          <div class="modal-field">
-            <span id="vlcPathLabel">VLC executable</span>
-            <div class="path-input-row player-path-input-row">
-              <input id="vlcPathInput" type="text" placeholder="Select or paste path to vlc.exe" aria-labelledby="vlcPathLabel">
-              <button class="icon-button" data-player-flag-editor="vlc" type="button" title="Edit VLC flags" aria-label="Edit VLC flags">
-                <span class="material-icons" aria-hidden="true">flag</span>
-              </button>
-              <button class="icon-button" data-player-path-picker="vlc" type="button" title="Browse for VLC executable" aria-label="Browse for VLC executable">
-                <span class="material-icons" aria-hidden="true">folder_open</span>
-              </button>
-            </div>
+            <div class="player-settings-list" id="playerSettingsList"></div>
           </div>
           <div class="modal-field">
             <span>API-Sports key</span>
@@ -377,6 +351,38 @@
             <button class="secondary-button" data-close-modal type="button">Cancel</button>
             <button class="primary-button" type="submit">Save Settings</button>
           </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="modal-backdrop" id="playerEditorModal" hidden>
+      <form class="modal player-editor-modal" id="playerEditorForm" role="dialog" aria-modal="true" aria-labelledby="playerEditorTitle">
+        <div class="modal-head">
+          <h2 id="playerEditorTitle">Add Player</h2>
+          <button class="icon-button" data-close-player-editor type="button" title="Close">
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <label>
+          <span>Name</span>
+          <input id="playerEditorNameInput" type="text" placeholder="Player name" autocomplete="off">
+        </label>
+        <label>
+          <span>Executable</span>
+          <div class="path-input-row">
+            <input id="playerEditorPathInput" type="text" placeholder="Select or paste path to player.exe" autocomplete="off" spellcheck="false">
+            <button class="icon-button" id="playerEditorBrowseButton" type="button" title="Browse for player executable" aria-label="Browse for player executable">
+              <span class="material-icons" aria-hidden="true">folder_open</span>
+            </button>
+          </div>
+        </label>
+        <label>
+          <span>Flags</span>
+          <input id="playerEditorFlagsInput" type="text" placeholder="Optional launch flags">
+        </label>
+        <div class="modal-actions">
+          <button class="secondary-button" data-close-player-editor type="button">Cancel</button>
+          <button class="primary-button" type="submit">Save Player</button>
         </div>
       </form>
     </div>
