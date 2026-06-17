@@ -79,6 +79,7 @@ let pendingSourceRemovalId = null;
 let pendingSourceRenameId = null;
 let pendingPlayerEditorId = null;
 let pendingPlayerFlagsId = null;
+const pendingChannelOpens = new Set();
 let categoryDrag = null;
 let suppressCategoryClick = false;
 let lastChannelClick = {
@@ -90,6 +91,11 @@ const queuedApiRequests = new Map();
 
 function $(id) {
   return document.getElementById(id);
+}
+
+function eventTargetElement(event) {
+  if (event.target instanceof Element) return event.target;
+  return event.target?.parentElement || null;
 }
 
 function initials(name) {
@@ -1258,11 +1264,23 @@ async function refreshWithState(request, options = {}) {
 }
 
 async function openChannel(channelId) {
+  const playerId = selectedPlayerId();
+  const playerLabel = selectedPlayerLabel();
+  const openKey = `${channelId}:${playerId}`;
+  if (pendingChannelOpens.has(openKey)) {
+    showToast(`Opening in ${playerLabel}...`);
+    return;
+  }
+
+  pendingChannelOpens.add(openKey);
+  showToast(`Opening in ${playerLabel}...`);
   const data = await api("/api/open", {
     method: "POST",
-    body: JSON.stringify({ channel_id: channelId, player: selectedPlayerId() }),
+    body: JSON.stringify({ channel_id: channelId, player: playerId }),
+  }).finally(() => {
+    pendingChannelOpens.delete(openKey);
   });
-  showToast(`Opened in ${data.label || selectedPlayerLabel()}`);
+  showToast(`Opened in ${data.label || playerLabel}`);
 }
 
 function renderRecordingFooter() {
@@ -2704,10 +2722,12 @@ function bindEvents() {
   });
 
   els.channelList.addEventListener("click", async (event) => {
-    const row = event.target.closest("[data-channel-id]");
+    const target = eventTargetElement(event);
+    if (!target) return;
+    const row = target.closest("[data-channel-id]");
     if (!row) return;
     const channelId = row.dataset.channelId;
-    const action = event.target.closest("[data-action]")?.dataset.action;
+    const action = target.closest("[data-action]")?.dataset.action;
     const clickTime = Date.now();
     const isRepeatedRowClick = !action
       && lastChannelClick.id === channelId
@@ -2734,8 +2754,10 @@ function bindEvents() {
   });
 
   els.detailPanel.addEventListener("click", async (event) => {
-    const actions = event.target.closest(".detail-actions");
-    const action = event.target.closest("[data-detail-action]")?.dataset.detailAction;
+    const target = eventTargetElement(event);
+    if (!target) return;
+    const actions = target.closest(".detail-actions");
+    const action = target.closest("[data-detail-action]")?.dataset.detailAction;
     if (!actions || !action) return;
     try {
       if (action === "open") {
