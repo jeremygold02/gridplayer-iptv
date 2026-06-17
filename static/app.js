@@ -46,6 +46,7 @@ const API_REQUEST_POLICIES = {
   "POST /api/refresh": "share",
   "POST /api/sports/refresh": "share",
   "POST /api/update/install": "share",
+  "GET /api/update/progress": "share",
   "POST /api/recording/stop": "share",
   "POST /api/settings": "queue",
 };
@@ -71,6 +72,7 @@ let recordingStatusTimer = null;
 let apiKeyVisible = false;
 let launchUpdateChecked = false;
 let pendingUpdate = null;
+let updateProgressTimer = null;
 let recordingState = { active: false };
 let recordingFooterDismissed = false;
 let pendingRecording = null;
@@ -2058,6 +2060,49 @@ function fillUpdateDialog(update) {
   els.updateInstallButton.disabled = !update.can_install;
 }
 
+function formatUpdateProgress(progress) {
+  const phase = progress?.phase || "idle";
+  const message = progress?.message || "";
+  if (phase === "downloading") {
+    const downloaded = Number(progress.downloaded_bytes) || 0;
+    const total = Number(progress.total_bytes) || 0;
+    const speed = Number(progress.bytes_per_second) || 0;
+    const speedText = speed > 0 ? ` (${formatBytes(Math.round(speed))}/s)` : "";
+    if (total > 0) {
+      return `Downloading ${formatBytes(downloaded)} / ${formatBytes(total)}${speedText}`;
+    }
+    if (downloaded > 0) {
+      return `Downloading ${formatBytes(downloaded)}${speedText}`;
+    }
+    return message || "Downloading update...";
+  }
+  if (phase === "checking") return message || "Checking for update...";
+  if (phase === "installing") return message || "Preparing update...";
+  if (phase === "complete") return message || "Update downloaded. Restarting...";
+  if (phase === "error") return message || "Update failed.";
+  return message || "Preparing update...";
+}
+
+function stopUpdateProgressPolling() {
+  window.clearInterval(updateProgressTimer);
+  updateProgressTimer = null;
+}
+
+async function refreshUpdateProgress(statusElement) {
+  const progress = await api("/api/update/progress");
+  if (!progress.active) return;
+  statusElement.className = `update-status ${progress.phase === "error" ? "error" : ""}`;
+  statusElement.textContent = formatUpdateProgress(progress);
+}
+
+function startUpdateProgressPolling(statusElement) {
+  stopUpdateProgressPolling();
+  refreshUpdateProgress(statusElement).catch(() => undefined);
+  updateProgressTimer = window.setInterval(() => {
+    refreshUpdateProgress(statusElement).catch(() => undefined);
+  }, 500);
+}
+
 function showUpdateDialog(update) {
   fillUpdateDialog(update);
   closeModals();
@@ -2079,14 +2124,21 @@ async function checkForLaunchUpdate() {
 
 async function installPendingUpdate(statusElement = els.updateInstallStatus) {
   if (!pendingUpdate) return;
+  if (!(statusElement instanceof HTMLElement)) {
+    statusElement = els.updateInstallStatus;
+  }
   els.updateInstallButton.disabled = true;
   els.aboutInstallUpdateButton.disabled = true;
   statusElement.className = "update-status";
-  statusElement.textContent = "Downloading update...";
+  statusElement.textContent = "Preparing update...";
+  startUpdateProgressPolling(statusElement);
   try {
     const result = await api("/api/update/install", { method: "POST" });
+    stopUpdateProgressPolling();
+    statusElement.className = "update-status";
     statusElement.textContent = result.message || "Update downloaded. Restarting...";
   } catch (error) {
+    stopUpdateProgressPolling();
     statusElement.className = "update-status error";
     statusElement.textContent = error.message;
     els.updateInstallButton.disabled = false;
@@ -2400,7 +2452,7 @@ function bindEvents() {
     }
   });
 
-  els.updateInstallButton.addEventListener("click", installPendingUpdate);
+  els.updateInstallButton.addEventListener("click", () => installPendingUpdate());
   els.renameSourceForm.addEventListener("submit", (event) => {
     event.preventDefault();
     renamePendingSource();

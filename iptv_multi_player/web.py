@@ -29,7 +29,7 @@ from .recording import (
 )
 from .sports import channels_with_pending_games, enrich_channels_with_games
 from .state import api_sports_key, default_state, now_ts, read_state, write_env_value, write_state
-from .updates import UpdateError, can_install_updates, check_for_update, install_update
+from .updates import UpdateError, can_install_updates, check_for_update, install_update, update_progress
 from .version import APP_NAME, APP_VERSION, GITHUB_REPO_URL
 
 app = Flask(
@@ -161,6 +161,11 @@ def api_update_install():
         return json_error(str(exc))
     except Exception as exc:  # noqa: BLE001
         return json_error(f"Could not install update: {exc}", 502)
+
+
+@app.get("/api/update/progress")
+def api_update_progress():
+    return jsonify({"success": True, "data": update_progress()})
 
 
 @app.post("/api/import-file")
