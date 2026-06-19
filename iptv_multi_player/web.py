@@ -25,6 +25,7 @@ from .recording import (
     install_ffmpeg,
     public_recording_config,
     recording_manager,
+    sanitize_clip_seconds,
     sanitize_recording_quality,
 )
 from .sports import channels_with_pending_games, enrich_channels_with_games
@@ -120,6 +121,8 @@ def recording_settings_from_payload(settings: dict[str, Any], payload: dict[str,
         next_settings["recording_dir"] = str(overrides.get("recording_dir") or "").strip()
     if "recording_default_quality" in overrides:
         next_settings["recording_default_quality"] = sanitize_recording_quality(overrides.get("recording_default_quality"))
+    if "recording_clip_seconds" in overrides:
+        next_settings["recording_clip_seconds"] = sanitize_clip_seconds(overrides.get("recording_clip_seconds"))
     return next_settings
 
 
@@ -399,8 +402,13 @@ def api_recording_start():
         if channel is None:
             return json_error("Channel not found.", 404)
         settings = recording_settings_from_payload(state["settings"], payload)
+    clip_seconds = (
+        sanitize_clip_seconds(payload.get("clip_seconds") or settings.get("recording_clip_seconds"))
+        if payload.get("clip_enabled")
+        else 0
+    )
     try:
-        return jsonify({"success": True, "data": recording_manager.start(channel, settings, quality_id)})
+        return jsonify({"success": True, "data": recording_manager.start(channel, settings, quality_id, clip_seconds)})
     except FfmpegMissingError as exc:
         return json_error(str(exc), 409)
     except RecordingError as exc:
@@ -415,6 +423,19 @@ def api_recording_stop():
         return jsonify({"success": True, "data": recording_manager.stop()})
     except Exception as exc:  # noqa: BLE001
         return json_error(f"Could not stop recording: {exc}", 502)
+
+
+@app.post("/api/recording/clip/save")
+def api_recording_save_clip():
+    with state_lock:
+        state = read_state()
+        settings = state["settings"]
+    try:
+        return jsonify({"success": True, "data": recording_manager.save_clip(settings)})
+    except RecordingError as exc:
+        return json_error(str(exc))
+    except Exception as exc:  # noqa: BLE001
+        return json_error(f"Could not save clip: {exc}", 502)
 
 
 @app.post("/api/recording/open")
@@ -604,6 +625,7 @@ def api_settings():
         "ffmpeg_path",
         "recording_dir",
         "recording_default_quality",
+        "recording_clip_seconds",
         "auto_open_queue",
         "ui_zoom",
         "ui_sidebar_width",
@@ -625,6 +647,8 @@ def api_settings():
                     settings[key] = normalize_player_id(payload[key], settings)
                 elif key == "recording_default_quality":
                     settings[key] = sanitize_recording_quality(payload[key])
+                elif key == "recording_clip_seconds":
+                    settings[key] = sanitize_clip_seconds(payload[key])
                 elif key.endswith("_path"):
                     settings[key] = str(payload[key] or "").strip()
                 elif key.endswith("_flags"):

@@ -47,6 +47,7 @@ const API_REQUEST_POLICIES = {
   "POST /api/sports/refresh": "share",
   "POST /api/update/install": "share",
   "GET /api/update/progress": "share",
+  "POST /api/recording/clip/save": "queue",
   "POST /api/recording/stop": "share",
   "POST /api/settings": "queue",
 };
@@ -858,8 +859,36 @@ function recordingQualityPresets() {
   ];
 }
 
+function clipDurationPresets() {
+  return recordingConfig().clip_duration_presets || [
+    { seconds: 30, label: "30 seconds" },
+    { seconds: 60, label: "1 minute" },
+    { seconds: 120, label: "2 minutes" },
+    { seconds: 300, label: "5 minutes" },
+    { seconds: 600, label: "10 minutes" },
+  ];
+}
+
+function defaultClipSeconds() {
+  return Number(appState?.settings?.recording_clip_seconds || recordingConfig().default_clip_seconds || 60);
+}
+
+function sanitizeClipSeconds(value) {
+  const seconds = Number(value) || defaultClipSeconds();
+  return clipDurationPresets().some((item) => Number(item.seconds) === seconds) ? seconds : defaultClipSeconds();
+}
+
 function recordingPathValue() {
   return appState?.settings?.recording_dir || recordingConfig().effective_dir || recordingConfig().default_dir || "";
+}
+
+function defaultRecordingOptions() {
+  return {
+    recording_dir: recordingPathValue(),
+    recording_default_quality: appState?.settings?.recording_default_quality || "best",
+    clip_enabled: false,
+    clip_seconds: defaultClipSeconds(),
+  };
 }
 
 function formatElapsed(seconds) {
@@ -885,6 +914,10 @@ function isRecordingChannel(channelId) {
   return Boolean(recordingState?.active && recordingState.channel_id === channelId);
 }
 
+function isClipMode(status = recordingState) {
+  return status?.mode === "clip";
+}
+
 function recordingBlocksChannel(channelId) {
   return Boolean(recordingState?.active && recordingState.channel_id !== channelId);
 }
@@ -892,12 +925,13 @@ function recordingBlocksChannel(channelId) {
 function recordingButtonHtml(channelId, compact = true) {
   const isActive = isRecordingChannel(channelId);
   const blocked = recordingBlocksChannel(channelId);
-  const title = isActive ? "Stop recording" : "Record stream";
+  const clipActive = isActive && isClipMode();
+  const title = isActive ? (clipActive ? "Stop clip buffer" : "Stop recording") : "Record stream";
   const buttonClass = compact ? "icon-button record-button" : "secondary-button record-button detail-record-button";
   return `
     <button class="${buttonClass} ${isActive ? "active" : ""}" data-${compact ? "action" : "detail-action"}="record" title="${title}" type="button" ${blocked ? "disabled" : ""}>
       ${iconHtml(isActive ? "stop_circle" : "download")}
-      ${compact ? "" : `<span>${isActive ? "Stop Recording" : "Record"}</span>`}
+      ${compact ? "" : `<span>${isActive ? (clipActive ? "Stop Clip Buffer" : "Stop Recording") : "Record"}</span>`}
     </button>
   `;
 }
@@ -909,6 +943,7 @@ function recordingStatusKind(status = recordingState) {
 function recordingStatusKey(status = recordingState) {
   return [
     recordingStatusKind(status),
+    status?.mode || "",
     status?.active ? "active" : "inactive",
     status?.channel_id || "",
     status?.output_path || "",
@@ -1288,6 +1323,7 @@ async function openChannel(channelId) {
 function renderRecordingFooter() {
   const state = recordingStatusKind();
   const active = Boolean(recordingState?.active);
+  const clipMode = isClipMode();
   const visible = recordingFooterShouldShow();
   const hasFile = Boolean(recordingState?.output_path);
   const hasRevealPath = hasFile;
@@ -1300,29 +1336,39 @@ function renderRecordingFooter() {
   els.recordingFooter.classList.toggle("error", state === "error");
   els.recordingFooter.classList.toggle("stopped", state === "stopped");
   els.recordingFooter.classList.toggle("active", active);
-  els.recordingFooterIcon.textContent = state === "error" ? "error" : (state === "stopped" ? "check_circle" : (state === "retrying" ? "sync" : "download"));
+  els.recordingFooter.classList.toggle("clipping", clipMode);
+  els.recordingFooterIcon.textContent = state === "error"
+    ? "error"
+    : (state === "stopped" ? "check_circle" : (state === "retrying" ? "sync" : (clipMode ? "content_cut" : "download")));
 
   const stateTitle = {
-    preparing: "Preparing Recording",
-    starting: "Starting Recording",
-    waiting: "Recording Ready",
-    retrying: "Retrying Recording",
-    error: "Recording Error",
-    stopped: "Recording Stopped",
-    recording: "Recording",
-  }[state] || "Recording";
+    preparing: clipMode ? "Preparing Clip Buffer" : "Preparing Recording",
+    starting: clipMode ? "Starting Clip Buffer" : "Starting Recording",
+    waiting: clipMode ? "Clip Buffer Ready" : "Recording Ready",
+    retrying: clipMode ? "Retrying Clip Buffer" : "Retrying Recording",
+    error: clipMode ? "Clip Buffer Error" : "Recording Error",
+    stopped: clipMode ? "Clip Buffer Stopped" : "Recording Stopped",
+    recording: clipMode ? "Clip Buffer" : "Recording",
+  }[state] || (clipMode ? "Clip Buffer" : "Recording");
   els.recordingFooterTitle.textContent = `${stateTitle}: ${recordingState.channel_name || "Stream"}`;
 
   const metaParts = [];
   if (recordingState.message && state !== "recording") {
     metaParts.push(recordingState.message);
   }
-  if (active || state === "stopped" || hasFile) {
+  if (clipMode && active) {
+    metaParts.push(`${formatElapsed(recordingState.clip_ready_seconds)} buffered`);
+    metaParts.push(`${formatElapsed(recordingState.clip_seconds)} window`);
+    metaParts.push(recordingState.quality_label || "Source");
+    metaParts.push(formatBytes(recordingState.size_bytes));
+  } else if (active || state === "stopped" || hasFile) {
     metaParts.push(formatElapsed(recordingState.elapsed_seconds));
     metaParts.push(recordingState.quality_label || "Source");
     metaParts.push(formatBytes(recordingState.size_bytes));
   }
   els.recordingFooterMeta.textContent = metaParts.filter(Boolean).join(" · ");
+  els.recordingSaveClipButton.hidden = !(clipMode && active);
+  els.recordingSaveClipButton.disabled = !(clipMode && active);
   els.recordingOpenButton.disabled = !hasFile;
   els.recordingRevealButton.disabled = !hasRevealPath;
   els.recordingStopButton.hidden = !active;
@@ -1378,10 +1424,34 @@ function fillQualitySelect(selectElement, selected) {
   selectElement.value = selected || "best";
 }
 
+function fillClipDurationSelect(selectElement, selected) {
+  const current = sanitizeClipSeconds(selected);
+  selectElement.innerHTML = clipDurationPresets()
+    .map((item) => `<option value="${Number(item.seconds)}">${escapeHtml(item.label)}</option>`)
+    .join("");
+  selectElement.value = String(current);
+}
+
+function syncClipDurationField(toggleElement, fieldElement) {
+  if (!toggleElement || !fieldElement) return;
+  fieldElement.hidden = !toggleElement.checked;
+}
+
+function syncRecordingStartButton() {
+  if (!els.startRecordingQualityButton || !els.recordingQualityClipToggle) return;
+  const clipEnabled = els.recordingQualityClipToggle.checked;
+  const icon = els.startRecordingQualityButton.querySelector(".material-icons");
+  const label = els.startRecordingQualityButton.querySelector("span:not(.material-icons)");
+  if (icon) icon.textContent = clipEnabled ? "content_cut" : "download";
+  if (label) label.textContent = clipEnabled ? "Start Clip Buffer" : "Start Recording";
+}
+
 function recordingOptionsFromModal() {
   return {
     recording_dir: els.recordingOptionDirInput.value.trim(),
     recording_default_quality: els.recordingOptionQualitySelect.value || "best",
+    clip_enabled: els.recordingOptionClipToggle.checked,
+    clip_seconds: sanitizeClipSeconds(els.recordingOptionClipDurationSelect.value),
   };
 }
 
@@ -1390,14 +1460,14 @@ function openRecordingOptionsModal(channelId) {
   if (!channel) return;
   pendingRecording = {
     channel_id: channelId,
-    options: {
-      recording_dir: recordingPathValue(),
-      recording_default_quality: appState?.settings?.recording_default_quality || "best",
-    },
+    options: defaultRecordingOptions(),
   };
   els.recordingOptionsChannel.textContent = channel.name;
   els.recordingOptionDirInput.value = pendingRecording.options.recording_dir;
   fillQualitySelect(els.recordingOptionQualitySelect, pendingRecording.options.recording_default_quality);
+  fillClipDurationSelect(els.recordingOptionClipDurationSelect, pendingRecording.options.clip_seconds);
+  els.recordingOptionClipToggle.checked = Boolean(pendingRecording.options.clip_enabled);
+  syncClipDurationField(els.recordingOptionClipToggle, els.recordingOptionClipDurationField);
   els.confirmRecordingOptionsButton.disabled = false;
   closeModals();
   openModal(els.recordingOptionsModal);
@@ -1422,6 +1492,10 @@ function showRecordingQualityLoadingModal(channelId, options = {}) {
   els.recordingQualityMessage.textContent = "";
   els.recordingQualitySelect.innerHTML = "";
   els.recordingQualityDirInput.value = options.recording_dir || recordingPathValue();
+  fillClipDurationSelect(els.recordingQualityClipDurationSelect, options.clip_seconds);
+  els.recordingQualityClipToggle.checked = Boolean(options.clip_enabled);
+  syncClipDurationField(els.recordingQualityClipToggle, els.recordingQualityClipDurationField);
+  syncRecordingStartButton();
   els.startRecordingQualityButton.hidden = false;
   els.startRecordingQualityButton.disabled = true;
   ensureRecordingQualityModalOpen();
@@ -1440,6 +1514,10 @@ function showRecordingQualityErrorModal(channelId, message, options = {}) {
   els.recordingQualityMessage.textContent = message || "The stream qualities could not be checked.";
   els.recordingQualitySelect.innerHTML = "";
   els.recordingQualityDirInput.value = options.recording_dir || recordingPathValue();
+  fillClipDurationSelect(els.recordingQualityClipDurationSelect, options.clip_seconds);
+  els.recordingQualityClipToggle.checked = Boolean(options.clip_enabled);
+  syncClipDurationField(els.recordingQualityClipToggle, els.recordingQualityClipDurationField);
+  syncRecordingStartButton();
   els.startRecordingQualityButton.hidden = true;
   els.startRecordingQualityButton.disabled = true;
   ensureRecordingQualityModalOpen();
@@ -1449,8 +1527,7 @@ function showRecordingQualityModal(prepared) {
   pendingRecording = {
     ...prepared,
     options: {
-      recording_dir: recordingPathValue(),
-      recording_default_quality: appState?.settings?.recording_default_quality || "best",
+      ...defaultRecordingOptions(),
       ...(prepared.options || {}),
     },
   };
@@ -1471,6 +1548,10 @@ function showRecordingQualityModal(prepared) {
     .join("");
   els.recordingQualitySelect.value = prepared.selected_quality_id || prepared.qualities?.[0]?.id || "source";
   els.recordingQualityDirInput.value = pendingRecording.options.recording_dir || recordingPathValue();
+  fillClipDurationSelect(els.recordingQualityClipDurationSelect, pendingRecording.options.clip_seconds);
+  els.recordingQualityClipToggle.checked = Boolean(pendingRecording.options.clip_enabled);
+  syncClipDurationField(els.recordingQualityClipToggle, els.recordingQualityClipDurationField);
+  syncRecordingStartButton();
   els.startRecordingQualityButton.hidden = false;
   els.startRecordingQualityButton.disabled = !prepared.can_start;
   ensureRecordingQualityModalOpen();
@@ -1480,13 +1561,21 @@ function recordingQualityOptionsFromModal() {
   return {
     ...(pendingRecording?.options || {}),
     recording_dir: els.recordingQualityDirInput.value.trim(),
+    clip_enabled: els.recordingQualityClipToggle.checked,
+    clip_seconds: sanitizeClipSeconds(els.recordingQualityClipDurationSelect.value),
   };
 }
 
 async function prepareRecording(channelId, options = {}) {
   const probeToken = ++recordingProbeToken;
+  const clipEnabled = Boolean(options.clip_enabled);
+  const clipSeconds = sanitizeClipSeconds(options.clip_seconds);
+  const localMode = {
+    mode: clipEnabled ? "clip" : "recording",
+    clip_seconds: clipEnabled ? clipSeconds : 0,
+  };
   showRecordingQualityLoadingModal(channelId, options);
-  setLocalRecordingStatus(channelId, "preparing", "Checking FFmpeg and stream qualities...");
+  setLocalRecordingStatus(channelId, "preparing", "Checking FFmpeg and stream qualities...", localMode);
   let data;
   try {
     data = await api("/api/recording/prepare", {
@@ -1495,7 +1584,7 @@ async function prepareRecording(channelId, options = {}) {
     });
   } catch (error) {
     if (probeToken !== recordingProbeToken) return;
-    setLocalRecordingStatus(channelId, "error", error.message);
+    setLocalRecordingStatus(channelId, "error", error.message, localMode);
     showRecordingQualityErrorModal(channelId, error.message, options);
     showToast(error.message, "error");
     return;
@@ -1503,7 +1592,7 @@ async function prepareRecording(channelId, options = {}) {
   if (probeToken !== recordingProbeToken) return;
   if (!data.ffmpeg?.available) {
     pendingRecording = { channel_id: channelId, options };
-    setLocalRecordingStatus(channelId, "error", data.ffmpeg?.message || "FFmpeg is not installed or was not found.");
+    setLocalRecordingStatus(channelId, "error", data.ffmpeg?.message || "FFmpeg is not installed or was not found.", localMode);
     showFfmpegModal(data.ffmpeg?.message);
     return;
   }
@@ -1511,31 +1600,48 @@ async function prepareRecording(channelId, options = {}) {
   const qualities = data.qualities || [];
   if (data.quality_unavailable) {
     setLocalRecordingStatus(channelId, "waiting", data.message || "Selected quality is not available for this stream.", {
+      ...localMode,
       quality_label: data.requested_quality_label || "",
     });
     showRecordingQualityModal({ ...data, channel_id: channelId, options });
     return;
   }
   setLocalRecordingStatus(channelId, "waiting", "Choose a source quality to start recording.", {
+    ...localMode,
     quality_label: data.selected_quality_id ? "Ready" : "",
   });
   showRecordingQualityModal({ ...data, channel_id: channelId, options });
 }
 
 async function startRecording(channelId, qualityId, options = {}) {
-  setLocalRecordingStatus(channelId, "starting", "Starting FFmpeg...", { quality_id: qualityId || "" });
+  const clipEnabled = Boolean(options.clip_enabled);
+  const clipSeconds = sanitizeClipSeconds(options.clip_seconds);
+  setLocalRecordingStatus(channelId, "starting", "Starting FFmpeg...", {
+    quality_id: qualityId || "",
+    mode: clipEnabled ? "clip" : "recording",
+    clip_seconds: clipEnabled ? clipSeconds : 0,
+  });
   try {
     const status = await api("/api/recording/start", {
       method: "POST",
-      body: JSON.stringify({ channel_id: channelId, quality_id: qualityId, recording_options: options }),
+      body: JSON.stringify({
+        channel_id: channelId,
+        quality_id: qualityId,
+        recording_options: options,
+        clip_enabled: clipEnabled,
+        clip_seconds: clipEnabled ? clipSeconds : 0,
+      }),
     });
     setRecordingStatus(status, { show: true });
     closeModals();
     render();
-    showToast("Recording started");
+    showToast(clipEnabled ? "Clip buffer started" : "Recording started");
   } catch (error) {
     closeModals();
-    setLocalRecordingStatus(channelId, "error", error.message, { quality_id: qualityId || "" });
+    setLocalRecordingStatus(channelId, "error", error.message, {
+      quality_id: qualityId || "",
+      mode: clipEnabled ? "clip" : "recording",
+    });
     showToast(error.message, "error");
   }
 }
@@ -1554,13 +1660,14 @@ async function confirmRecordingOptions() {
 }
 
 async function stopRecording(options = {}) {
+  const stoppingClip = isClipMode();
   try {
     setRecordingStatus(await api("/api/recording/stop", { method: "POST" }), { show: !options.dismiss });
     if (options.dismiss) {
       recordingFooterDismissed = true;
     }
     render();
-    showToast("Recording stopped");
+    showToast(stoppingClip ? "Clip buffer stopped" : "Recording stopped");
   } catch (error) {
     setRecordingStatus({ ...recordingState, state: "error", message: error.message }, { show: true });
     render();
@@ -1595,13 +1702,10 @@ async function handleRecordChannel(channelId) {
     return;
   }
   if (recordingState?.active) {
-    showToast("Stop the current recording before starting another.", "error");
+    showToast("Stop the current recording or clip buffer before starting another.", "error");
     return;
   }
-  const options = {
-    recording_dir: recordingPathValue(),
-    recording_default_quality: appState?.settings?.recording_default_quality || "best",
-  };
+  const options = defaultRecordingOptions();
   pendingRecording = { channel_id: channelId, options };
   await prepareRecording(channelId, options);
 }
@@ -1616,6 +1720,20 @@ async function openRecordingFile() {
 
 async function revealRecordingFile() {
   await api("/api/recording/reveal", { method: "POST" });
+}
+
+async function saveClip() {
+  els.recordingSaveClipButton.disabled = true;
+  try {
+    const status = await api("/api/recording/clip/save", { method: "POST" });
+    setRecordingStatus(status, { show: true });
+    render();
+    showToast("Clip saved");
+  } catch (error) {
+    setRecordingStatus({ ...recordingState, state: "error", message: error.message }, { show: true });
+    render();
+    throw error;
+  }
 }
 
 function fillSettingsForm() {
@@ -2540,6 +2658,15 @@ function bindEvents() {
     });
   });
 
+  els.recordingOptionClipToggle.addEventListener("change", () => {
+    syncClipDurationField(els.recordingOptionClipToggle, els.recordingOptionClipDurationField);
+  });
+
+  els.recordingQualityClipToggle.addEventListener("change", () => {
+    syncClipDurationField(els.recordingQualityClipToggle, els.recordingQualityClipDurationField);
+    syncRecordingStartButton();
+  });
+
   els.browseFfmpegModalButton.addEventListener("click", () => {
     pickFfmpegExecutable(els.browseFfmpegModalButton, { save: true, retryRecording: true });
   });
@@ -2582,6 +2709,14 @@ function bindEvents() {
   els.recordingRevealButton.addEventListener("click", async () => {
     try {
       await revealRecordingFile();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+
+  els.recordingSaveClipButton.addEventListener("click", async () => {
+    try {
+      await saveClip();
     } catch (error) {
       showToast(error.message, "error");
     }
@@ -2842,11 +2977,13 @@ function initEls() {
     "ffmpegStatusTitle", "ffmpegStatusText", "installFfmpegSettingsButton", "apiSportsKeyInput",
     "toggleApiKeyButton", "ffmpegModal", "ffmpegModalMessage", "ffmpegInstallStatus", "browseFfmpegModalButton",
     "installFfmpegModalButton", "recordingOptionsModal", "recordingOptionsChannel", "recordingOptionDirInput", "recordingOptionDirPickerButton",
-    "recordingOptionQualitySelect", "confirmRecordingOptionsButton", "recordingQualityModal", "recordingQualityChannel", "recordingQualitySelect",
+    "recordingOptionQualitySelect", "recordingOptionClipToggle", "recordingOptionClipDurationField", "recordingOptionClipDurationSelect",
+    "confirmRecordingOptionsButton", "recordingQualityModal", "recordingQualityChannel", "recordingQualitySelect",
     "recordingQualityTitle", "recordingQualityLoading", "recordingQualityLoadingText", "recordingQualityFields", "recordingQualityControls",
-    "recordingQualityMessage", "recordingQualityDirInput", "recordingQualityDirPickerButton", "recordingQualityActions", "startRecordingQualityButton",
+    "recordingQualityMessage", "recordingQualityDirInput", "recordingQualityDirPickerButton", "recordingQualityClipToggle",
+    "recordingQualityClipDurationField", "recordingQualityClipDurationSelect", "recordingQualityActions", "startRecordingQualityButton",
     "recordingFooter", "recordingFooterIcon", "recordingFooterTitle", "recordingFooterMeta",
-    "recordingOpenButton", "recordingRevealButton", "recordingStopButton", "recordingDismissButton",
+    "recordingSaveClipButton", "recordingOpenButton", "recordingRevealButton", "recordingStopButton", "recordingDismissButton",
     "recordingDismissModal", "confirmDismissRecordingButton", "aboutButton", "aboutModal", "aboutVersion", "aboutRepoLink",
     "checkUpdatesButton", "aboutInstallUpdateButton", "updateStatus", "updateModal",
     "updateCurrentVersion", "updateLatestVersion", "updateReleaseLink", "updateInstallStatus",

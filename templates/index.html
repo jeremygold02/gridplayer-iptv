@@ -138,6 +138,10 @@
           </div>
         </div>
         <div class="recording-footer-actions">
+          <button class="secondary-button" id="recordingSaveClipButton" type="button" hidden>
+            <span class="material-icons" aria-hidden="true">content_cut</span>
+            <span>Save Clip</span>
+          </button>
           <button class="secondary-button" id="recordingOpenButton" type="button">
             <span class="material-icons" aria-hidden="true">play_circle</span>
             <span>Open File</span>
@@ -457,6 +461,14 @@
           <span>Source quality</span>
           <select id="recordingOptionQualitySelect" aria-label="Recording source quality"></select>
         </label>
+        <label class="toggle-row">
+          <span>Clip buffer</span>
+          <input id="recordingOptionClipToggle" type="checkbox">
+        </label>
+        <label id="recordingOptionClipDurationField">
+          <span>Clip length</span>
+          <select id="recordingOptionClipDurationSelect" aria-label="Clip length"></select>
+        </label>
         <div class="modal-actions">
           <button class="secondary-button" data-close-modal type="button">Cancel</button>
           <button class="primary-button" id="confirmRecordingOptionsButton" type="button">
@@ -496,6 +508,14 @@
               <span>Source quality</span>
               <select id="recordingQualitySelect"></select>
             </label>
+            <label class="toggle-row">
+              <span>Clip buffer</span>
+              <input id="recordingQualityClipToggle" type="checkbox">
+            </label>
+            <label id="recordingQualityClipDurationField">
+              <span>Clip length</span>
+              <select id="recordingQualityClipDurationSelect" aria-label="Clip length"></select>
+            </label>
           </div>
         </div>
         <div class="modal-actions" id="recordingQualityActions">
@@ -511,12 +531,12 @@
     <div class="modal-backdrop" id="recordingDismissModal" hidden>
       <section class="modal recording-dismiss-modal" role="dialog" aria-modal="true" aria-labelledby="recordingDismissTitle">
         <div class="modal-head">
-          <h2 id="recordingDismissTitle">Stop Recording?</h2>
+          <h2 id="recordingDismissTitle">Stop Capture?</h2>
           <button class="icon-button" data-close-modal type="button" title="Close">
             <span class="material-icons" aria-hidden="true">close</span>
           </button>
         </div>
-        <p class="modal-copy">Closing the recording footer will stop the active recording.</p>
+        <p class="modal-copy">Closing the recording footer will stop the active recording or clip buffer.</p>
         <div class="modal-actions">
           <button class="secondary-button" data-close-modal type="button">Cancel</button>
           <button class="primary-button danger-button" id="confirmDismissRecordingButton" type="button">

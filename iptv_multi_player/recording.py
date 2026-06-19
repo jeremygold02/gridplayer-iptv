@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime
 import json
 import os
@@ -14,8 +13,38 @@ from typing import Any
 from urllib.parse import urljoin
 import urllib.request
 
-from .config import DATA_DIR, HTTP_TIMEOUT_SECONDS
+from .config import HTTP_TIMEOUT_SECONDS
 from .players import launch_player, player_label
+from .recording_clips import (
+    CLIP_DURATION_PRESETS,
+    CLIP_SEGMENT_SECONDS,
+    cleanup_clip_buffer,
+    clip_buffer_dir,
+    clip_path,
+    clip_segment_count,
+    clip_segment_files,
+    remux_clip_segments,
+    sanitize_clip_seconds,
+)
+from .recording_ffmpeg import (
+    FFMPEG_WINGET_ID,
+    command_text,
+    find_ffmpeg,
+    install_ffmpeg,
+    public_ffmpeg,
+    run_hidden_kwargs,
+)
+from .recording_log import append_recording_log, recording_log_path, reset_recording_session_log
+from .recording_paths import default_recording_dir, effective_recording_dir, recording_path
+from .recording_types import (
+    ActiveRecording,
+    FfmpegInfo,
+    FfmpegMissingError,
+    FfmpegInstallError,
+    QualityOption,
+    QualityUnavailableError,
+    RecordingError,
+)
 
 
 QUALITY_PRESETS = (
@@ -28,173 +57,7 @@ QUALITY_PRESETS = (
     {"id": "lowest", "label": "Lowest", "max_height": 0},
 )
 QUALITY_IDS = {item["id"] for item in QUALITY_PRESETS}
-FFMPEG_WINGET_ID = "Gyan.FFmpeg"
 HLS_ATTR_RE = re.compile(r'([A-Za-z0-9-]+)=("[^"]*"|[^,]*)')
-INVALID_FILENAME_CHARS = set('<>:"/\\|?*')
-RECORDING_LOG_PATH = DATA_DIR / "recording_session.log"
-
-
-class RecordingError(RuntimeError):
-    pass
-
-
-class FfmpegMissingError(RecordingError):
-    pass
-
-
-class FfmpegInstallError(RecordingError):
-    pass
-
-
-class QualityUnavailableError(RecordingError):
-    pass
-
-
-@dataclass
-class FfmpegInfo:
-    available: bool
-    ffmpeg_path: str = ""
-    ffprobe_path: str = ""
-    message: str = ""
-
-
-@dataclass
-class QualityOption:
-    id: str
-    label: str
-    width: int | None = None
-    height: int | None = None
-    bitrate: int | None = None
-    fps: float | None = None
-    source_url: str | None = None
-    map_args: list[str] = field(default_factory=list)
-
-    def public(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "label": self.label,
-            "width": self.width,
-            "height": self.height,
-            "bitrate": self.bitrate,
-            "fps": self.fps,
-        }
-
-
-@dataclass
-class ActiveRecording:
-    channel_id: str
-    channel_name: str
-    quality_id: str
-    quality_label: str
-    output_path: Path
-    process: subprocess.Popen
-    output_handle: Any
-    log_handle: Any
-    command: list[str]
-    started_at: float
-    retry_count: int = 0
-    retry_after: float = 0.0
-    retry_message: str = ""
-    last_returncode: int | None = None
-
-
-def default_recording_dir() -> Path:
-    return Path.home() / "Videos" / "IPTV Multi Player"
-
-
-def fallback_recording_dir() -> Path:
-    return DATA_DIR / "recordings"
-
-
-def configured_path(value: Any) -> Path | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    return Path(text).expanduser()
-
-
-def candidate_ffmpeg_paths(settings: dict[str, Any]) -> list[Path]:
-    candidates: list[Path] = []
-    configured = configured_path(settings.get("ffmpeg_path"))
-    if configured:
-        candidates.append(configured)
-
-    candidates.extend([
-        Path(r"C:\ffmpeg\ffmpeg.exe"),
-        Path.home() / "AppData" / "Local" / "Microsoft" / "WinGet" / "Links" / "ffmpeg.exe",
-        Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Links" / "ffmpeg.exe",
-    ])
-
-    package_root = Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Packages"
-    if package_root.is_dir():
-        candidates.extend(package_root.glob("Gyan.FFmpeg*/*/bin/ffmpeg.exe"))
-        candidates.extend(package_root.glob("Gyan.FFmpeg*/ffmpeg*/bin/ffmpeg.exe"))
-        candidates.extend(package_root.glob("Gyan.FFmpeg*/bin/ffmpeg.exe"))
-        for package_dir in package_root.glob("Gyan.FFmpeg*"):
-            if package_dir.is_dir():
-                candidates.extend(package_dir.rglob("ffmpeg.exe"))
-
-    found = shutil.which("ffmpeg")
-    if found:
-        candidates.append(Path(found))
-
-    unique: list[Path] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        if not str(candidate):
-            continue
-        key = str(candidate).lower()
-        if key not in seen:
-            unique.append(candidate)
-            seen.add(key)
-    return unique
-
-
-def ffprobe_from_ffmpeg(ffmpeg_path: Path) -> Path | None:
-    sibling = ffmpeg_path.with_name("ffprobe.exe" if os.name == "nt" else "ffprobe")
-    if sibling.is_file():
-        return sibling
-    found = shutil.which("ffprobe")
-    return Path(found) if found else None
-
-
-def find_ffmpeg(settings: dict[str, Any]) -> FfmpegInfo:
-    ffmpeg_without_probe = ""
-    for candidate in candidate_ffmpeg_paths(settings):
-        if not candidate.is_file():
-            continue
-        ffprobe = ffprobe_from_ffmpeg(candidate)
-        if ffprobe and ffprobe.is_file():
-            return FfmpegInfo(
-                available=True,
-                ffmpeg_path=str(candidate),
-                ffprobe_path=str(ffprobe),
-                message="FFmpeg is ready.",
-            )
-        ffmpeg_without_probe = str(candidate)
-
-    if ffmpeg_without_probe:
-        return FfmpegInfo(
-            available=False,
-            ffmpeg_path=ffmpeg_without_probe,
-            message="FFmpeg was found, but ffprobe was not found beside it or on PATH.",
-        )
-
-    return FfmpegInfo(
-        available=False,
-        message="FFmpeg is not installed or was not found on PATH.",
-    )
-
-
-def public_ffmpeg(settings: dict[str, Any]) -> dict[str, Any]:
-    info = find_ffmpeg(settings)
-    return {
-        "available": info.available,
-        "path": info.ffmpeg_path,
-        "ffprobe_path": info.ffprobe_path,
-        "message": info.message,
-        "install_id": FFMPEG_WINGET_ID,
-    }
 
 
 def public_recording_config(settings: dict[str, Any]) -> dict[str, Any]:
@@ -204,69 +67,13 @@ def public_recording_config(settings: dict[str, Any]) -> dict[str, Any]:
         "effective_dir": str(effective_recording_dir(settings, create=False)),
         "log_path": str(recording_log_path()),
         "quality_presets": list(QUALITY_PRESETS),
+        "clip_duration_presets": list(CLIP_DURATION_PRESETS),
+        "default_clip_seconds": sanitize_clip_seconds(settings.get("recording_clip_seconds")),
     }
-
-
-def effective_recording_dir(settings: dict[str, Any], create: bool = False) -> Path:
-    directory = configured_path(settings.get("recording_dir")) or default_recording_dir()
-    if create:
-        try:
-            directory.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            directory = fallback_recording_dir()
-            directory.mkdir(parents=True, exist_ok=True)
-    return directory
-
 
 def sanitize_recording_quality(value: Any) -> str:
     quality = str(value or "best").strip().lower()
     return quality if quality in QUALITY_IDS else "best"
-
-
-def sanitize_filename(value: str, fallback: str = "recording") -> str:
-    cleaned = "".join("_" if char in INVALID_FILENAME_CHARS or ord(char) < 32 else char for char in value)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
-    return cleaned[:140] or fallback
-
-
-def recording_path(channel_name: str, settings: dict[str, Any]) -> Path:
-    directory = effective_recording_dir(settings, create=True)
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    base = f"{timestamp} - {sanitize_filename(channel_name)}"
-    return directory / f"{base}.ts"
-
-
-def recording_log_path() -> Path:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    return RECORDING_LOG_PATH
-
-
-def reset_recording_session_log() -> None:
-    path = recording_log_path()
-    timestamp = datetime.now().isoformat(timespec="seconds")
-    path.write_text(f"[{timestamp}] IPTV Multi Player recording session started\n", encoding="utf-8")
-
-
-def append_recording_log(title: str, lines: list[Any] | None = None) -> None:
-    try:
-        path = recording_log_path()
-        timestamp = datetime.now().isoformat(timespec="seconds")
-        with path.open("a", encoding="utf-8", errors="replace") as handle:
-            handle.write(f"\n[{timestamp}] {title}\n")
-            for line in lines or []:
-                handle.write(f"{line}\n")
-    except OSError:
-        pass
-
-
-def command_text(command: list[str]) -> str:
-    return " ".join(str(part) for part in command)
-
-
-def run_hidden_kwargs() -> dict[str, Any]:
-    if os.name != "nt":
-        return {}
-    return {"creationflags": subprocess.CREATE_NO_WINDOW}
 
 
 def fraction_to_float(value: Any) -> float | None:
@@ -595,10 +402,11 @@ def retry_delay_seconds(retry_count: int) -> int:
 
 
 def close_recording_handles(active: ActiveRecording) -> None:
-    try:
-        active.output_handle.close()
-    except OSError:
-        pass
+    if active.output_handle:
+        try:
+            active.output_handle.close()
+        except OSError:
+            pass
     try:
         active.log_handle.close()
     except OSError:
@@ -631,6 +439,29 @@ def launch_recording_process(command: list[str], output_path: Path, append: bool
     return process, output_handle, log_handle
 
 
+def launch_clip_process(command: list[str]) -> tuple[subprocess.Popen, Any]:
+    log_handle = recording_log_path().open("a", encoding="utf-8", errors="replace")
+    log_handle.write(f"\n[{datetime.now().isoformat(timespec='seconds')}] ffmpeg clip buffer start\n")
+    log_handle.write(f"{command_text(command)}\n\n")
+    log_handle.flush()
+    try:
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=log_handle,
+            close_fds=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            **run_hidden_kwargs(),
+        )
+    except Exception:
+        log_handle.close()
+        raise
+    return process, log_handle
+
+
 def probe_qualities(url: str, settings: dict[str, Any]) -> tuple[list[QualityOption], FfmpegInfo]:
     ffmpeg = find_ffmpeg(settings)
     if not ffmpeg.available:
@@ -650,24 +481,35 @@ def probe_qualities(url: str, settings: dict[str, Any]) -> tuple[list[QualityOpt
 def public_status_from_active(active: ActiveRecording) -> dict[str, Any]:
     elapsed = max(0, int(time.time() - active.started_at))
     state = "retrying" if active.retry_after else "recording"
-    message = active.retry_message if active.retry_after else "Recording"
+    is_clip = active.mode == "clip"
+    message = active.retry_message if active.retry_after else ("Clip buffer active" if is_clip else "Recording")
     size = 0
-    if active.output_path.is_file():
+    output_path = active.last_clip_path if is_clip else active.output_path
+    if output_path and output_path.is_file():
         try:
-            size = active.output_path.stat().st_size
+            size = output_path.stat().st_size
         except OSError:
             size = 0
+    elif is_clip:
+        for segment in clip_segment_files(active.buffer_dir):
+            try:
+                size += segment.stat().st_size
+            except OSError:
+                pass
     return {
         "active": True,
         "state": state,
         "message": message,
+        "mode": active.mode,
         "channel_id": active.channel_id,
         "channel_name": active.channel_name,
         "quality_id": active.quality_id,
         "quality_label": active.quality_label,
-        "output_path": str(active.output_path),
+        "output_path": str(output_path) if output_path else "",
         "elapsed_seconds": elapsed,
         "size_bytes": size,
+        "clip_seconds": active.clip_seconds,
+        "clip_ready_seconds": min(active.clip_seconds, elapsed) if is_clip else 0,
         "retry_count": active.retry_count,
     }
 
@@ -685,6 +527,7 @@ def inactive_status() -> dict[str, Any]:
         "active": False,
         "state": "idle",
         "message": "",
+        "mode": "recording",
         "channel_id": "",
         "channel_name": "",
         "quality_id": "",
@@ -692,6 +535,8 @@ def inactive_status() -> dict[str, Any]:
         "output_path": "",
         "elapsed_seconds": 0,
         "size_bytes": 0,
+        "clip_seconds": 0,
+        "clip_ready_seconds": 0,
     }
 
 
@@ -709,21 +554,30 @@ class RecordingManager:
         active.retry_after = time.time() + delay
         code_text = "unknown exit code" if returncode is None else f"exit code {returncode}"
         active.retry_message = f"Stream cut out ({code_text}). Retrying automatically..."
-        self._last_output_path = active.output_path
+        if active.output_path:
+            self._last_output_path = active.output_path
         append_recording_log(
             "ffmpeg exited",
             [
                 f"channel={active.channel_name}",
+                f"mode={active.mode}",
                 f"returncode={returncode}",
                 f"retry_count={active.retry_count}",
                 f"retry_delay_seconds={delay}",
-                f"output_path={active.output_path}",
+                f"output_path={active.output_path or ''}",
+                f"buffer_dir={active.buffer_dir or ''}",
             ],
         )
 
     def _restart_active_locked(self, active: ActiveRecording) -> None:
         try:
-            process, output_handle, log_handle = launch_recording_process(active.command, active.output_path, append=True)
+            if active.mode == "clip":
+                process, log_handle = launch_clip_process(active.command)
+                output_handle = None
+            elif active.output_path:
+                process, output_handle, log_handle = launch_recording_process(active.command, active.output_path, append=True)
+            else:
+                raise RecordingError("Recording output path was lost.")
         except Exception as exc:  # noqa: BLE001 - keep retrying transient launch failures
             active.retry_count += 1
             delay = retry_delay_seconds(active.retry_count)
@@ -774,7 +628,7 @@ class RecordingManager:
                     "qualities": [],
                     "selected_quality_id": "",
                     "can_start": False,
-                    "message": "Another stream is already recording.",
+                    "message": "Another recording or clip buffer is already active.",
                 }
 
         qualities, ffmpeg = probe_qualities(str(channel.get("url") or ""), settings)
@@ -815,11 +669,17 @@ class RecordingManager:
             **unavailable,
         }
 
-    def start(self, channel: dict[str, Any], settings: dict[str, Any], quality_id: str | None) -> dict[str, Any]:
+    def start(
+        self,
+        channel: dict[str, Any],
+        settings: dict[str, Any],
+        quality_id: str | None,
+        clip_seconds: int = 0,
+    ) -> dict[str, Any]:
         with self._lock:
             self._clear_finished_locked()
             if self._active:
-                raise RecordingError("Another stream is already recording.")
+                raise RecordingError("Another recording or clip buffer is already active.")
 
         qualities, ffmpeg = probe_qualities(str(channel.get("url") or ""), settings)
         if not ffmpeg.available:
@@ -830,36 +690,75 @@ class RecordingManager:
         if not input_url:
             raise RecordingError("Channel has no stream URL to record.")
 
-        output_path = recording_path(str(channel.get("name") or "Recording"), settings)
-        command = [
-            ffmpeg.ffmpeg_path,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
-            "-reconnect",
-            "1",
-            "-reconnect_streamed",
-            "1",
-            "-reconnect_delay_max",
-            "5",
-            "-i",
-            input_url,
-            *recording_map_args(quality),
-            "-c",
-            "copy",
-            "-flush_packets",
-            "1",
-            "-f",
-            "mpegts",
-            "pipe:1",
-        ]
+        channel_name = str(channel.get("name") or "Recording")
+        mode = "clip" if clip_seconds else "recording"
+        output_path: Path | None = None
+        output_handle: Any | None = None
+        buffer_dir: Path | None = None
 
-        process, output_handle, log_handle = launch_recording_process(command, output_path, append=False)
+        if mode == "clip":
+            clip_seconds = sanitize_clip_seconds(clip_seconds)
+            buffer_dir = clip_buffer_dir(channel_name)
+            command = [
+                ffmpeg.ffmpeg_path,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-reconnect",
+                "1",
+                "-reconnect_streamed",
+                "1",
+                "-reconnect_delay_max",
+                "5",
+                "-i",
+                input_url,
+                *recording_map_args(quality),
+                "-c",
+                "copy",
+                "-f",
+                "segment",
+                "-segment_time",
+                str(CLIP_SEGMENT_SECONDS),
+                "-segment_wrap",
+                str(clip_segment_count(clip_seconds)),
+                "-reset_timestamps",
+                "1",
+                "-segment_format",
+                "mpegts",
+                str(buffer_dir / "buffer_%05d.ts"),
+            ]
+            process, log_handle = launch_clip_process(command)
+        else:
+            output_path = recording_path(channel_name, settings)
+            command = [
+                ffmpeg.ffmpeg_path,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-reconnect",
+                "1",
+                "-reconnect_streamed",
+                "1",
+                "-reconnect_delay_max",
+                "5",
+                "-i",
+                input_url,
+                *recording_map_args(quality),
+                "-c",
+                "copy",
+                "-flush_packets",
+                "1",
+                "-f",
+                "mpegts",
+                "pipe:1",
+            ]
+            process, output_handle, log_handle = launch_recording_process(command, output_path, append=False)
 
         active = ActiveRecording(
             channel_id=str(channel.get("id") or ""),
-            channel_name=str(channel.get("name") or "Recording"),
+            channel_name=channel_name,
             quality_id=quality.id,
             quality_label=quality.label,
             output_path=output_path,
@@ -868,17 +767,23 @@ class RecordingManager:
             log_handle=log_handle,
             command=command,
             started_at=time.time(),
+            mode=mode,
+            clip_seconds=clip_seconds if mode == "clip" else 0,
+            buffer_dir=buffer_dir,
         )
         with self._lock:
             self._active = active
-            self._last_output_path = output_path
+            if output_path:
+                self._last_output_path = output_path
             self._last_status = None
             append_recording_log(
-                "recording active",
+                "recording active" if mode == "recording" else "clip buffer active",
                 [
                     f"channel={active.channel_name}",
                     f"quality={active.quality_label}",
-                    f"output_path={active.output_path}",
+                    f"output_path={active.output_path or ''}",
+                    f"clip_seconds={active.clip_seconds}",
+                    f"buffer_dir={active.buffer_dir or ''}",
                 ],
             )
             return public_status_from_active(active)
@@ -909,33 +814,81 @@ class RecordingManager:
 
         close_recording_handles(active)
         with self._lock:
-            self._last_output_path = active.output_path
+            if active.last_clip_path:
+                self._last_output_path = active.last_clip_path
+            elif active.output_path:
+                self._last_output_path = active.output_path
             self._active = None
             active.retry_after = 0.0
             active.retry_message = ""
-            self._last_status = public_terminal_status(active, "stopped", "Recording stopped.")
+            message = "Clip buffer stopped." if active.mode == "clip" else "Recording stopped."
+            self._last_status = public_terminal_status(active, "stopped", message)
             append_recording_log(
-                "recording stopped",
+                "recording stopped" if active.mode == "recording" else "clip buffer stopped",
                 [
                     f"channel={active.channel_name}",
+                    f"mode={active.mode}",
                     f"returncode={process.returncode}",
-                    f"output_path={active.output_path}",
+                    f"output_path={active.output_path or ''}",
+                    f"last_clip_path={active.last_clip_path or ''}",
                 ],
             )
+            if active.mode == "clip":
+                cleanup_clip_buffer(active)
             return self._last_status
+
+    def save_clip(self, settings: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            self._clear_finished_locked()
+            active = self._active
+            if not active or active.mode != "clip":
+                raise RecordingError("No clip buffer is active.")
+
+            segments = clip_segment_files(active.buffer_dir)
+            if len(segments) > 1:
+                segments = segments[:-1]
+            segment_limit = max(1, (active.clip_seconds + CLIP_SEGMENT_SECONDS - 1) // CLIP_SEGMENT_SECONDS + 1)
+            segments = segments[-segment_limit:]
+            if not segments:
+                raise RecordingError("The clip buffer is not ready yet.")
+
+            ffmpeg = find_ffmpeg(settings)
+            if not ffmpeg.available:
+                raise FfmpegMissingError(ffmpeg.message)
+
+            output_path = clip_path(active.channel_name, settings)
+            remux_clip_segments(ffmpeg.ffmpeg_path, segments, output_path)
+
+            if not output_path.exists() or output_path.stat().st_size == 0:
+                raise RecordingError("Could not save clip because the buffer was empty.")
+
+            active.last_clip_path = output_path
+            self._last_output_path = output_path
+            append_recording_log(
+                "clip saved",
+                [
+                    f"channel={active.channel_name}",
+                    f"clip_seconds={active.clip_seconds}",
+                    f"segments={len(segments)}",
+                    f"output_path={output_path}",
+                ],
+            )
+            status = public_status_from_active(active)
+            status["clip_path"] = str(output_path)
+            return status
 
     def active_or_last_path(self) -> Path | None:
         with self._lock:
             self._clear_finished_locked()
             if self._active:
-                return self._active.output_path
+                return self._active.last_clip_path if self._active.mode == "clip" else self._active.output_path
             return self._last_output_path
 
     def active_or_last_reveal_path(self) -> Path | None:
         with self._lock:
             self._clear_finished_locked()
             if self._active:
-                return self._active.output_path
+                return self._active.last_clip_path if self._active.mode == "clip" else self._active.output_path
             return self._last_output_path
 
     def open_recording(self, settings: dict[str, Any], player_id: Any = None) -> dict[str, Any]:
@@ -958,41 +911,5 @@ class RecordingManager:
         else:
             raise RecordingError("Could not open the recording folder on this platform.")
         return {"path": str(path), "folder": str(folder)}
-
-
-def install_ffmpeg() -> FfmpegInfo:
-    winget = shutil.which("winget")
-    if not winget:
-        raise FfmpegInstallError("winget was not found on this PC.")
-
-    command = [
-        winget,
-        "install",
-        "--id",
-        FFMPEG_WINGET_ID,
-        "--exact",
-        "--source",
-        "winget",
-        "--silent",
-        "--accept-package-agreements",
-        "--accept-source-agreements",
-    ]
-    result = subprocess.run(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        timeout=900,
-        **run_hidden_kwargs(),
-    )
-    if result.returncode != 0:
-        output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
-        raise FfmpegInstallError(output or "winget could not install FFmpeg.")
-
-    info = find_ffmpeg({})
-    if not info.available:
-        raise FfmpegInstallError("FFmpeg installed, but the executable could not be found yet. Try restarting the app.")
-    return info
-
 
 recording_manager = RecordingManager()

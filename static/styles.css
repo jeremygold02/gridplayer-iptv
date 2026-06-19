@@ -1698,6 +1698,14 @@ body.recording-footer-visible .detail-panel {
   border-color: rgba(91, 208, 97, 0.42);
 }
 
+.recording-footer.clipping {
+  border-color: rgba(110, 167, 255, 0.44);
+}
+
+.recording-footer.clipping.stopped {
+  border-color: rgba(91, 208, 97, 0.42);
+}
+
 .recording-footer[hidden] {
   display: none;
 }
@@ -1723,6 +1731,14 @@ body.recording-footer-visible .detail-panel {
 }
 
 .recording-footer.stopped .recording-dot {
+  color: var(--green);
+}
+
+.recording-footer.clipping .recording-dot {
+  color: var(--blue);
+}
+
+.recording-footer.clipping.stopped .recording-dot {
   color: var(--green);
 }
 

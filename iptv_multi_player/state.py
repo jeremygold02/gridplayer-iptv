@@ -33,6 +33,7 @@ def default_state() -> dict[str, Any]:
             "ffmpeg_path": "",
             "recording_dir": "",
             "recording_default_quality": "best",
+            "recording_clip_seconds": 60,
             "auto_open_queue": False,
             "ui_zoom": 100,
             "ui_sidebar_width": 250,
