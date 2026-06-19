@@ -23,6 +23,8 @@ CLIP_DURATION_PRESETS = (
 CLIP_DURATION_SECONDS = {item["seconds"] for item in CLIP_DURATION_PRESETS}
 DEFAULT_CLIP_SECONDS = 60
 CLIP_SEGMENT_SECONDS = 2
+CLIP_OUTPUT_SUFFIX = ".mp4"
+CLIP_OUTPUT_FORMAT = "mp4"
 
 
 def sanitize_clip_seconds(value: Any) -> int:
@@ -37,7 +39,7 @@ def clip_path(channel_name: str, settings: dict[str, Any]) -> Path:
     directory = effective_recording_dir(settings, create=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     base = f"{timestamp} - {sanitize_filename(channel_name)} Clip"
-    return unique_path(directory / f"{base}.ts")
+    return unique_path(directory / f"{base}{CLIP_OUTPUT_SUFFIX}")
 
 
 def clip_buffer_root() -> Path:
@@ -121,10 +123,10 @@ def remux_clip_segments(ffmpeg_path: str, segments: list[Path], output_path: Pat
             "copy",
             "-avoid_negative_ts",
             "make_zero",
-            "-mpegts_flags",
-            "+resend_headers",
+            "-movflags",
+            "+faststart",
             "-f",
-            "mpegts",
+            CLIP_OUTPUT_FORMAT,
             str(temp_path),
         ]
         append_recording_log("clip remux start", [command_text(command)])
@@ -147,7 +149,7 @@ def remux_clip_segments(ffmpeg_path: str, segments: list[Path], output_path: Pat
             ],
         )
         if result.returncode != 0:
-            message = (result.stderr or result.stdout or "Could not save clip.").strip()
+            message = (result.stderr or result.stdout or "Could not save MP4 clip.").strip()
             raise RecordingError(message)
         temp_path.replace(output_path)
     except subprocess.TimeoutExpired as exc:
