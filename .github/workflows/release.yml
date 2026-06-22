@@ -111,12 +111,7 @@ jobs:
           $notes = @(
             "## Changes",
             ""
-          ) + $commits + @(
-            "",
-            "## Download",
-            "- ``IPTV Multi Player Setup.exe`` installs to ``%LocalAppData%\Programs\IPTV Multi Player`` and can add Start Menu and desktop shortcuts.",
-            "- ``IPTV Multi Player.exe`` is the portable version."
-          )
+          ) + $commits
           Set-Content -Path "release_notes.md" -Value $notes -Encoding UTF8
 
       - name: Create GitHub release
