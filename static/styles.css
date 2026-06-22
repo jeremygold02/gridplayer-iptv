@@ -1152,13 +1152,24 @@ body.recording-footer-visible .detail-panel {
 }
 
 .detail-panel .detail-main {
-  align-items: flex-start;
+  display: block;
 }
 
 .detail-logo {
-  width: 64px;
-  height: 64px;
-  font-size: 20px;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  font-size: 28px;
+}
+
+.detail-logo img {
+  object-fit: contain;
+}
+
+.detail-heading {
+  min-width: 0;
+  margin-top: -4px;
 }
 
 .detail-meta {

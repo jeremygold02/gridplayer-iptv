@@ -1270,10 +1270,10 @@ function renderDetail() {
     <div class="detail-content">
       <div class="detail-main">
         ${logoHtml(channel, "detail-logo")}
-        <div class="detail-text">
-          <div class="detail-title">${escapeHtml(channel.name)}</div>
-          <div class="detail-subtitle">${escapeHtml(channel.group)} · ${escapeHtml(sourceName(channel.source_id))}</div>
-        </div>
+      </div>
+      <div class="detail-heading">
+        <div class="detail-title">${escapeHtml(channel.name)}</div>
+        <div class="detail-subtitle">${escapeHtml(channel.group)} · ${escapeHtml(sourceName(channel.source_id))}</div>
       </div>
       <div class="detail-meta">
         ${gameMetaHtml}
