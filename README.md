@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/app-screenshot.png" alt="IPTV Multi Player showing playlists, channel filters, live game status, and stream details">
+</p>
+
 # IPTV Multi Player
 
 A local Flask + pywebview IPTV client for importing M3U playlists and opening individual streams in GridPlayer, MPV, or VLC.
