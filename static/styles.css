@@ -429,15 +429,18 @@ body.recording-footer-visible .detail-panel {
   text-align: left;
 }
 
-.source-row-with-action {
-  grid-template-columns: minmax(0, 1fr) 26px;
-  column-gap: 4px;
-  padding: 4px 4px 4px 7px;
+.source-row-with-action,
+.filter-row-with-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 8px;
+  padding: 4px 7px;
 }
 
-.source-select {
+.source-select,
+.filter-select {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
+  grid-template-columns: 22px minmax(0, 1fr);
   align-items: center;
   column-gap: 8px;
   min-width: 0;
@@ -450,7 +453,8 @@ body.recording-footer-visible .detail-panel {
   text-align: left;
 }
 
-.source-select > span:nth-child(2) {
+.source-select > span:nth-child(2),
+.filter-select > span:nth-child(2) {
   min-width: 0;
   overflow: hidden;
 }
@@ -459,8 +463,37 @@ body.recording-footer-visible .detail-panel {
   justify-self: end;
 }
 
-.source-actions {
+.source-trailing,
+.filter-trailing {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.source-actions,
+.filter-actions {
   position: relative;
+  display: grid;
+  width: 0;
+  overflow: visible;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.12s ease, width 0.12s ease;
+}
+
+.source-row-with-action:hover .source-actions,
+.source-row-with-action:focus-within .source-actions,
+.source-actions:focus-within,
+.filter-row-with-action:hover .filter-actions,
+.filter-row-with-action:focus-within .filter-actions,
+.filter-actions:focus-within {
+  width: 26px;
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
 }
 
 .source-menu-trigger {
@@ -545,6 +578,7 @@ body.recording-footer-visible .detail-panel {
 }
 
 .source-select:focus-visible,
+.filter-select:focus-visible,
 .source-menu-trigger:focus-visible {
   outline: 1px solid rgba(24, 96, 248, 0.75);
   outline-offset: 1px;
@@ -591,7 +625,8 @@ body.recording-footer-visible .detail-panel {
 }
 
 .source-name,
-.nav-row > span:nth-child(2) {
+.nav-row > span:nth-child(2),
+.filter-select > span:nth-child(2) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

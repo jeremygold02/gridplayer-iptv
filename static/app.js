@@ -36,9 +36,6 @@ const GAME_SORT_RANK = {
   stream: 5,
 };
 let customFilterPresets = {};
-const BUILT_IN_FILTER_PRESET_IDS = {
-  nba: "nba",
-};
 const API_REQUEST_POLICIES = {
   "GET /api/recording/status": "share",
   "GET /api/update/check": "share",
@@ -81,6 +78,8 @@ let pendingRecording = null;
 let recordingProbeToken = 0;
 let pendingSourceRemovalId = null;
 let pendingSourceRenameId = null;
+let pendingCustomFilterEditorId = "";
+let pendingCustomFilterRemovalId = null;
 let pendingPlayerEditorId = null;
 let pendingPlayerFlagsId = null;
 const pendingChannelOpens = new Set();
@@ -304,11 +303,6 @@ async function loadCustomFilterPresets() {
 
 function presetById(presetId) {
   return customFilterPresets[presetId] || null;
-}
-
-function builtInFilterPreset(kind) {
-  const presetId = BUILT_IN_FILTER_PRESET_IDS[kind];
-  return presetId ? presetById(presetId) : null;
 }
 
 function showToast(message, kind = "info") {
@@ -574,7 +568,7 @@ function customFilterFromKind(kind) {
 }
 
 function filterDefinitionForKind(kind) {
-  return builtInFilterPreset(kind) || customFilterFromKind(kind);
+  return customFilterFromKind(kind);
 }
 
 function customFilterSearchFields(channel) {
@@ -641,10 +635,6 @@ function channelMatchesFilterDefinition(channel, definition) {
   const positiveRules = rules.filter((rule) => rule.operator !== "not_contains");
   if (!positiveRules.length) return true;
   return positiveRules.some((rule) => fields.some((field) => fieldMatchesCustomFilterRule(field, rule)));
-}
-
-function isNbaChannel(channel) {
-  return channelMatchesFilterDefinition(channel, filterDefinitionForKind("nba"));
 }
 
 function isFilterKindChannel(channel, kind) {
@@ -1062,6 +1052,9 @@ function syncFilters() {
   if (filters.kind === "live-games" && !liveGameCount()) {
     filters.kind = "all";
   }
+  if (!["all", "favorites", "live-games"].includes(filters.kind) && !String(filters.kind || "").startsWith("custom:")) {
+    filters.kind = "all";
+  }
   if (String(filters.kind || "").startsWith("custom:") && !customFilterFromKind(filters.kind)) {
     filters.kind = "all";
   }
@@ -1069,10 +1062,6 @@ function syncFilters() {
 
 function liveGameCount() {
   return (appState?.channels || []).filter(isLiveGameChannel).length;
-}
-
-function nbaChannelCount() {
-  return (appState?.channels || []).filter(isNbaChannel).length;
 }
 
 function customFilterCount(filter) {
@@ -1083,11 +1072,30 @@ function renderCustomFilters() {
   els.customFilterList.innerHTML = customFilters().map((filter) => {
     const kind = customFilterKind(filter.id);
     return `
-      <button class="nav-row ${filters.kind === kind ? "active" : ""}" data-filter-kind="${escapeHtml(kind)}" type="button">
-        ${iconHtml("filter_alt", "nav-icon")}
-        <span>${escapeHtml(filter.name)}</span>
-        <span class="count">${customFilterCount(filter)}</span>
-      </button>
+      <div class="nav-row filter-row-with-action ${filters.kind === kind ? "active" : ""}" data-filter-kind="${escapeHtml(kind)}">
+        <button class="filter-select" data-filter-kind="${escapeHtml(kind)}" type="button">
+          ${iconHtml("filter_alt", "nav-icon")}
+          <span>${escapeHtml(filter.name)}</span>
+        </button>
+        <div class="filter-trailing">
+          <div class="filter-actions">
+            <button class="source-menu-trigger icon-button" data-filter-menu-id="${escapeHtml(filter.id)}" type="button" title="Filter actions" aria-label="Actions for ${escapeHtml(filter.name)}" aria-haspopup="menu" aria-expanded="false">
+              ${iconHtml("more_vert")}
+            </button>
+            <div class="source-menu filter-menu" data-filter-menu="${escapeHtml(filter.id)}" role="menu" hidden>
+              <button data-filter-edit-id="${escapeHtml(filter.id)}" role="menuitem" type="button">
+                ${iconHtml("edit")}
+                <span>Edit</span>
+              </button>
+              <button class="danger-menu-item" data-filter-remove-id="${escapeHtml(filter.id)}" role="menuitem" type="button">
+                ${iconHtml("delete")}
+                <span>Delete</span>
+              </button>
+            </div>
+          </div>
+          <span class="count">${customFilterCount(filter)}</span>
+        </div>
+      </div>
     `;
   }).join("");
 }
@@ -1097,7 +1105,6 @@ function renderStatus() {
   const liveCount = liveGameCount();
   els.allCount.textContent = total;
   els.favoriteCount.textContent = appState.favorites.length;
-  els.nbaCount.textContent = nbaChannelCount();
   els.liveGameCount.textContent = liveCount;
   els.liveGamesFilter.hidden = liveCount === 0;
   document.querySelectorAll("[data-filter-kind]").forEach((button) => {
@@ -1164,26 +1171,28 @@ function renderSources() {
       <span></span>
     </button>`,
     ...appState.sources.map((source) => `
-      <div class="source-row source-row-with-action ${filters.sourceId === source.id ? "active" : ""}">
+      <div class="source-row source-row-with-action ${filters.sourceId === source.id ? "active" : ""}" data-source-id="${escapeHtml(source.id)}">
         <button class="source-select" data-source-id="${escapeHtml(source.id)}" type="button">
           ${iconHtml(source.kind === "url" ? "link" : "folder", "nav-icon")}
           <span><span class="source-name">${escapeHtml(source.name)}</span><span class="source-meta">${source.channel_count || 0} channels</span></span>
-          <span class="source-meta source-kind">${escapeHtml(source.kind)}</span>
         </button>
-        <div class="source-actions">
-          <button class="source-menu-trigger icon-button" data-source-menu-id="${escapeHtml(source.id)}" type="button" title="Playlist actions" aria-label="Actions for ${escapeHtml(source.name)}" aria-haspopup="menu" aria-expanded="false">
-            ${iconHtml("more_vert")}
-          </button>
-          <div class="source-menu" data-source-menu="${escapeHtml(source.id)}" role="menu" hidden>
-            <button data-source-rename-id="${escapeHtml(source.id)}" role="menuitem" type="button">
-              ${iconHtml("edit")}
-              <span>Rename</span>
+        <div class="source-trailing">
+          <div class="source-actions">
+            <button class="source-menu-trigger icon-button" data-source-menu-id="${escapeHtml(source.id)}" type="button" title="Playlist actions" aria-label="Actions for ${escapeHtml(source.name)}" aria-haspopup="menu" aria-expanded="false">
+              ${iconHtml("more_vert")}
             </button>
-            <button class="danger-menu-item" data-source-remove-id="${escapeHtml(source.id)}" role="menuitem" type="button">
-              ${iconHtml("delete")}
-              <span>Delete</span>
-            </button>
+            <div class="source-menu" data-source-menu="${escapeHtml(source.id)}" role="menu" hidden>
+              <button data-source-rename-id="${escapeHtml(source.id)}" role="menuitem" type="button">
+                ${iconHtml("edit")}
+                <span>Rename</span>
+              </button>
+              <button class="danger-menu-item" data-source-remove-id="${escapeHtml(source.id)}" role="menuitem" type="button">
+                ${iconHtml("delete")}
+                <span>Delete</span>
+              </button>
+            </div>
           </div>
+          <span class="source-meta source-kind">${escapeHtml(source.kind)}</span>
         </div>
       </div>
     `),
@@ -2316,14 +2325,21 @@ function fillCustomFilterPresets(selected = "") {
   els.customFilterPresetSelect.value = selected;
 }
 
-function openCustomFilterDialog() {
+function openCustomFilterDialog(filterId = "") {
+  const filter = filterId ? customFilters().find((item) => item.id === filterId) : null;
+  pendingCustomFilterEditorId = filter?.id || "";
+  els.customFilterTitle.textContent = filter ? "Edit Filter" : "Add Filter";
+  els.customFilterSubmitButton.textContent = filter ? "Save Changes" : "Save Filter";
   fillCustomFilterPresets();
-  fillCustomFilterCategories("all");
+  fillCustomFilterCategories(filter?.category || "all");
   els.customFilterForm.reset();
   els.customFilterPresetSelect.value = "";
-  els.customFilterCategorySelect.value = "all";
+  els.customFilterNameInput.value = filter?.name || "";
+  els.customFilterCategorySelect.value = filter?.category || "all";
+  els.customFilterTermsInput.value = filter?.terms?.join(", ") || "";
   closeModals();
   openModal(els.customFilterModal);
+  els.customFilterNameInput.select();
 }
 
 function applyCustomFilterPreset(presetId) {
@@ -2354,7 +2370,7 @@ function makeCustomFilterId(name) {
   const existingIds = new Set(customFilters().map((filter) => filter.id));
   let id = base;
   let index = 2;
-  while (existingIds.has(id) || customFilterPresets[id] || BUILT_IN_FILTER_PRESET_IDS[id]) {
+  while (existingIds.has(id)) {
     id = `${base}_${index}`;
     index += 1;
   }
@@ -2365,6 +2381,9 @@ async function saveCustomFilter() {
   const name = els.customFilterNameInput.value.trim();
   const category = els.customFilterCategorySelect.value || "all";
   const terms = parseCustomFilterTerms(els.customFilterTermsInput.value);
+  const existingFilters = customFilters();
+  const existingIndex = existingFilters.findIndex((filter) => filter.id === pendingCustomFilterEditorId);
+  const isEditing = existingIndex >= 0;
   if (!name) {
     showToast("Filter name is required", "error");
     return;
@@ -2374,24 +2393,65 @@ async function saveCustomFilter() {
     return;
   }
 
-  const nextFilters = [
-    ...customFilters(),
-    {
-      id: makeCustomFilterId(name),
-      name,
-      category,
-      terms,
-    },
-  ];
+  const savedFilter = {
+    id: isEditing ? pendingCustomFilterEditorId : makeCustomFilterId(name),
+    name,
+    category,
+    terms,
+  };
+  const nextFilters = [...existingFilters];
+  if (isEditing) {
+    nextFilters[existingIndex] = savedFilter;
+  } else {
+    nextFilters.push(savedFilter);
+  }
   const data = await api("/api/settings", {
     method: "POST",
     body: JSON.stringify({ custom_filters: nextFilters }),
   });
   setAppState(data.state, { preserveGames: true });
-  filters.kind = customFilterKind(nextFilters[nextFilters.length - 1].id);
+  filters.kind = customFilterKind(savedFilter.id);
+  pendingCustomFilterEditorId = "";
   closeModals();
   render();
-  showToast("Filter saved");
+  showToast(isEditing ? "Filter updated" : "Filter saved");
+}
+
+function showRemoveCustomFilterDialog(filterId) {
+  const filter = customFilters().find((item) => item.id === filterId);
+  if (!filter) return;
+  pendingCustomFilterRemovalId = filterId;
+  els.removeCustomFilterName.textContent = filter.name;
+  els.confirmRemoveCustomFilterButton.disabled = false;
+  closeModals();
+  openModal(els.removeCustomFilterModal);
+}
+
+async function removePendingCustomFilter() {
+  const filterId = pendingCustomFilterRemovalId;
+  if (!filterId) return;
+
+  const filter = customFilters().find((item) => item.id === filterId);
+  els.confirmRemoveCustomFilterButton.disabled = true;
+  try {
+    const nextFilters = customFilters().filter((item) => item.id !== filterId);
+    const data = await api("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ custom_filters: nextFilters }),
+    });
+    setAppState(data.state, { preserveGames: true });
+    if (filters.kind === customFilterKind(filterId)) {
+      filters.kind = "all";
+    }
+    pendingCustomFilterRemovalId = null;
+    closeModals();
+    render();
+    showToast(`Deleted ${filter?.name || "filter"}`);
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    els.confirmRemoveCustomFilterButton.disabled = false;
+  }
 }
 
 function openModal(modal) {
@@ -2405,6 +2465,7 @@ function closeModals() {
   els.urlModal.hidden = true;
   els.renameSourceModal.hidden = true;
   els.removeSourceModal.hidden = true;
+  els.removeCustomFilterModal.hidden = true;
   els.settingsModal.hidden = true;
   els.playerEditorModal.hidden = true;
   els.playerFlagsModal.hidden = true;
@@ -2438,7 +2499,25 @@ function closeSourceMenus(exceptSourceId = null) {
 function toggleSourceMenu(sourceId) {
   const menu = [...document.querySelectorAll("[data-source-menu]")]
     .find((item) => item.dataset.sourceMenu === sourceId);
+  closeFilterMenus();
   closeSourceMenus(menu?.hidden ? sourceId : null);
+}
+
+function closeFilterMenus(exceptFilterId = null) {
+  document.querySelectorAll("[data-filter-menu]").forEach((menu) => {
+    const isExcepted = exceptFilterId && menu.dataset.filterMenu === exceptFilterId;
+    menu.hidden = !isExcepted;
+  });
+  document.querySelectorAll("[data-filter-menu-id]").forEach((button) => {
+    button.setAttribute("aria-expanded", String(Boolean(exceptFilterId && button.dataset.filterMenuId === exceptFilterId)));
+  });
+}
+
+function toggleFilterMenu(filterId) {
+  const menu = [...document.querySelectorAll("[data-filter-menu]")]
+    .find((item) => item.dataset.filterMenu === filterId);
+  closeSourceMenus();
+  closeFilterMenus(menu?.hidden ? filterId : null);
 }
 
 function bindEvents() {
@@ -2464,12 +2543,16 @@ function bindEvents() {
     if (!event.target.closest(".source-actions")) {
       closeSourceMenus();
     }
+    if (!event.target.closest(".filter-actions")) {
+      closeFilterMenus();
+    }
   });
 
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeImportMenu();
       closeSourceMenus();
+      closeFilterMenus();
     }
   });
 
@@ -2485,7 +2568,7 @@ function bindEvents() {
     });
   });
 
-  els.addFilterButton.addEventListener("click", openCustomFilterDialog);
+  els.addFilterButton.addEventListener("click", () => openCustomFilterDialog());
 
   els.customFilterPresetSelect.addEventListener("change", () => {
     applyCustomFilterPreset(els.customFilterPresetSelect.value);
@@ -2595,6 +2678,7 @@ function bindEvents() {
     renamePendingSource();
   });
   els.confirmRemoveSourceButton.addEventListener("click", removePendingSource);
+  els.confirmRemoveCustomFilterButton.addEventListener("click", removePendingCustomFilter);
 
   els.fileInput.addEventListener("change", async () => {
     const file = els.fileInput.files[0];
@@ -2832,6 +2916,32 @@ function bindEvents() {
   });
 
   els.filtersSection.addEventListener("click", (event) => {
+    const menuButton = event.target.closest("[data-filter-menu-id]");
+    if (menuButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleFilterMenu(menuButton.dataset.filterMenuId);
+      return;
+    }
+
+    const editButton = event.target.closest("[data-filter-edit-id]");
+    if (editButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeFilterMenus();
+      openCustomFilterDialog(editButton.dataset.filterEditId);
+      return;
+    }
+
+    const removeButton = event.target.closest("[data-filter-remove-id]");
+    if (removeButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeFilterMenus();
+      showRemoveCustomFilterDialog(removeButton.dataset.filterRemoveId);
+      return;
+    }
+
     const button = event.target.closest("[data-filter-kind]");
     if (!button) return;
     filters.kind = button.dataset.filterKind;
@@ -2981,10 +3091,11 @@ function initEls() {
   [
     "importPlaylistButton", "importMenu", "importFileButton", "importUrlButton", "refreshButton", "settingsButton",
     "playerSelect", "zoomOutButton", "zoomValue", "zoomInButton", "sidebarResizer",
-    "sourceList", "filtersSection", "addFilterButton", "allCount", "favoriteCount", "nbaCount", "liveGamesFilter",
+    "sourceList", "filtersSection", "addFilterButton", "allCount", "favoriteCount", "liveGamesFilter",
     "liveGameCount", "customFilterList", "categoryList", "resultCount",
     "searchInput", "channelList", "detailPanel", "fileInput", "customFilterModal", "customFilterForm",
-    "customFilterNameInput", "customFilterCategorySelect", "customFilterTermsInput", "customFilterPresetSelect", "urlModal",
+    "customFilterTitle", "customFilterNameInput", "customFilterCategorySelect", "customFilterTermsInput", "customFilterPresetSelect",
+    "customFilterSubmitButton", "removeCustomFilterModal", "removeCustomFilterName", "confirmRemoveCustomFilterButton", "urlModal",
     "urlForm", "urlNameInput", "urlInput", "renameSourceModal", "renameSourceForm", "renameSourceInput",
     "confirmRenameSourceButton", "removeSourceModal", "removeSourceName",
     "confirmRemoveSourceButton", "settingsModal", "settingsForm",

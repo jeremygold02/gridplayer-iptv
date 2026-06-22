@@ -85,11 +85,6 @@
               <span>Favorites</span>
               <span id="favoriteCount" class="count">0</span>
             </button>
-            <button class="nav-row" data-filter-kind="nba" type="button">
-              <span class="material-icons nav-icon" aria-hidden="true">sports_basketball</span>
-              <span>NBA</span>
-              <span id="nbaCount" class="count">0</span>
-            </button>
             <button class="nav-row" id="liveGamesFilter" data-filter-kind="live-games" type="button" hidden>
               <span class="material-icons nav-icon" aria-hidden="true">sports_score</span>
               <span>Live Games</span>
@@ -205,7 +200,7 @@
         </label>
         <div class="modal-actions">
           <button class="secondary-button" data-close-modal type="button">Cancel</button>
-          <button class="primary-button" type="submit">Save Filter</button>
+          <button class="primary-button" id="customFilterSubmitButton" type="submit">Save Filter</button>
         </div>
       </form>
     </div>
@@ -269,6 +264,25 @@
           <button class="primary-button danger-button" id="confirmRemoveSourceButton" type="button">
             <span class="material-icons" aria-hidden="true">delete</span>
             <span>Remove</span>
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="removeCustomFilterModal" hidden>
+      <section class="modal remove-source-modal" role="dialog" aria-modal="true" aria-labelledby="removeCustomFilterTitle">
+        <div class="modal-head">
+          <h2 id="removeCustomFilterTitle">Delete Filter</h2>
+          <button class="icon-button" data-close-modal type="button" title="Close">
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <p class="modal-copy">Delete <strong id="removeCustomFilterName">this filter</strong>? The filtered channels will stay in your playlists.</p>
+        <div class="modal-actions">
+          <button class="secondary-button" data-close-modal type="button">Cancel</button>
+          <button class="primary-button danger-button" id="confirmRemoveCustomFilterButton" type="button">
+            <span class="material-icons" aria-hidden="true">delete</span>
+            <span>Delete</span>
           </button>
         </div>
       </section>
