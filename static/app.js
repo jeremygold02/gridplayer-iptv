@@ -693,10 +693,11 @@ function filteredChannels() {
 }
 
 function logoHtml(channel, extraClass = "") {
+  const fallbackText = "N/A";
   if (channel.logo) {
-    return `<span class="logo ${extraClass}"><img src="${escapeHtml(channel.logo)}" alt="" onerror="const parent=this.parentElement; this.remove(); if(parent) parent.textContent='${initials(channel.name)}';"></span>`;
+    return `<span class="logo ${extraClass}"><img src="${escapeHtml(channel.logo)}" alt="" onerror="const parent=this.parentElement; this.remove(); if(parent) parent.textContent='${fallbackText}';"></span>`;
   }
-  return `<span class="logo ${extraClass}">${initials(channel.name)}</span>`;
+  return `<span class="logo ${extraClass}">${fallbackText}</span>`;
 }
 
 function gameInfo(channel) {
