@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import socket
+import sys
 import threading
 import time
 
@@ -18,6 +19,7 @@ except ImportError:  # pragma: no cover
 
 
 APP_USER_MODEL_ID = "jeremygold02.IPTVMultiPlayer"
+WINDOWS_ICON_EXE_ENV = "IPTV_MULTI_PLAYER_ICON_EXE"
 
 
 def set_windows_app_user_model_id() -> None:
@@ -49,6 +51,17 @@ def window_icon_path() -> str | None:
         return str(installed_icon_path)
     icon_path = config.ASSET_DIR / "icon.ico"
     return str(icon_path) if icon_path.is_file() else None
+
+
+def windows_icon_executable_path() -> str | None:
+    if os.name != "nt":
+        return None
+
+    icon_executable = os.environ.get(WINDOWS_ICON_EXE_ENV)
+    if icon_executable and os.path.isfile(icon_executable):
+        return icon_executable
+
+    return None
 
 
 def find_free_port(host: str) -> int:
@@ -105,7 +118,15 @@ def main() -> None:
         maximized=True,
         text_select=True,
     )
-    webview.start(debug=args.debug, icon=window_icon_path())
+    original_executable = sys.executable
+    icon_executable = windows_icon_executable_path()
+    if icon_executable:
+        sys.executable = icon_executable
+
+    try:
+        webview.start(debug=args.debug, icon=window_icon_path())
+    finally:
+        sys.executable = original_executable
 
 
 if __name__ == "__main__":
