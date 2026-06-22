@@ -1,6 +1,7 @@
 data/
 *.exe
 *.bat
+*.cs
 .build_venv/
 build/
 dist/
