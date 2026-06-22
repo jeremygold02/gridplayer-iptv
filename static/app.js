@@ -75,6 +75,7 @@ let launchUpdateChecked = false;
 let pendingUpdate = null;
 let updateProgressTimer = null;
 let recordingState = { active: false };
+let recordingStopping = false;
 let recordingFooterDismissed = false;
 let pendingRecording = null;
 let recordingProbeToken = 0;
@@ -1324,6 +1325,7 @@ function renderRecordingFooter() {
   const state = recordingStatusKind();
   const active = Boolean(recordingState?.active);
   const clipMode = isClipMode();
+  const stopping = Boolean(recordingStopping && active);
   const visible = recordingFooterShouldShow();
   const hasFile = Boolean(recordingState?.output_path);
   const hasRevealPath = hasFile;
@@ -1337,6 +1339,7 @@ function renderRecordingFooter() {
   els.recordingFooter.classList.toggle("stopped", state === "stopped");
   els.recordingFooter.classList.toggle("active", active);
   els.recordingFooter.classList.toggle("clipping", clipMode);
+  els.recordingFooter.classList.toggle("stopping", stopping);
   els.recordingFooterIcon.textContent = state === "error"
     ? "error"
     : (state === "stopped" ? "check_circle" : (state === "retrying" ? "sync" : (clipMode ? "content_cut" : "download")));
@@ -1368,10 +1371,19 @@ function renderRecordingFooter() {
   }
   els.recordingFooterMeta.textContent = metaParts.filter(Boolean).join(" · ");
   els.recordingSaveClipButton.hidden = !(clipMode && active);
-  els.recordingSaveClipButton.disabled = !(clipMode && active);
+  els.recordingSaveClipButton.disabled = !(clipMode && active) || stopping;
   els.recordingOpenButton.disabled = !hasFile;
   els.recordingRevealButton.disabled = !hasRevealPath;
   els.recordingStopButton.hidden = !active;
+  els.recordingStopButton.disabled = stopping;
+  els.recordingStopButton.classList.toggle("is-loading", stopping);
+  els.recordingStopButton.setAttribute("aria-busy", String(stopping));
+  const stopIcon = els.recordingStopButton.querySelector(".recording-stop-icon");
+  const stopSpinner = els.recordingStopButton.querySelector(".recording-stop-spinner");
+  const stopLabel = els.recordingStopButton.querySelector(".recording-stop-label");
+  if (stopIcon) stopIcon.hidden = stopping;
+  if (stopSpinner) stopSpinner.hidden = !stopping;
+  if (stopLabel) stopLabel.textContent = stopping ? "Stopping" : "Stop";
 }
 
 async function refreshRecordingStatus() {
@@ -1660,15 +1672,21 @@ async function confirmRecordingOptions() {
 }
 
 async function stopRecording(options = {}) {
+  if (recordingStopping) return;
   const stoppingClip = isClipMode();
+  recordingStopping = true;
+  renderRecordingFooter();
   try {
-    setRecordingStatus(await api("/api/recording/stop", { method: "POST" }), { show: !options.dismiss });
+    const status = await api("/api/recording/stop", { method: "POST" });
+    recordingStopping = false;
+    setRecordingStatus(status, { show: !options.dismiss });
     if (options.dismiss) {
       recordingFooterDismissed = true;
     }
     render();
     showToast(stoppingClip ? "Clip buffer stopped" : "Recording stopped");
   } catch (error) {
+    recordingStopping = false;
     setRecordingStatus({ ...recordingState, state: "error", message: error.message }, { show: true });
     render();
     throw error;

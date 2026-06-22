@@ -88,21 +88,18 @@ def cleanup_clip_buffer(active: Any) -> None:
         shutil.rmtree(buffer_dir, ignore_errors=True)
 
 
-def concat_file_line(path: Path) -> str:
-    escaped_path = path.as_posix().replace("\\", "/").replace("'", "'\\''")
-    return f"file '{escaped_path}'"
-
-
-def write_concat_file(path: Path, segments: list[Path]) -> None:
-    lines = [concat_file_line(segment) for segment in segments]
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+def write_joined_ts_file(path: Path, segments: list[Path]) -> None:
+    with path.open("wb") as output:
+        for segment in segments:
+            with segment.open("rb") as source:
+                shutil.copyfileobj(source, output, length=1024 * 1024)
 
 
 def remux_clip_segments(ffmpeg_path: str, segments: list[Path], output_path: Path) -> None:
     temp_path = output_path.with_suffix(output_path.suffix + ".tmp")
-    list_path = output_path.with_suffix(output_path.suffix + ".concat.txt")
+    joined_path = output_path.with_suffix(output_path.suffix + ".joined.ts")
     try:
-        write_concat_file(list_path, segments)
+        write_joined_ts_file(joined_path, segments)
         command = [
             ffmpeg_path,
             "-hide_banner",
@@ -111,12 +108,8 @@ def remux_clip_segments(ffmpeg_path: str, segments: list[Path], output_path: Pat
             "-y",
             "-fflags",
             "+genpts",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
             "-i",
-            str(list_path),
+            str(joined_path),
             "-map",
             "0",
             "-c",
@@ -157,7 +150,7 @@ def remux_clip_segments(ffmpeg_path: str, segments: list[Path], output_path: Pat
     except OSError as exc:
         raise RecordingError(f"Could not save clip: {exc}") from exc
     finally:
-        for transient_path in (temp_path, list_path):
+        for transient_path in (temp_path, joined_path):
             try:
                 transient_path.unlink(missing_ok=True)
             except OSError:
