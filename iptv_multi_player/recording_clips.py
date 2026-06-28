@@ -59,9 +59,10 @@ def clip_segment_count(clip_seconds: int) -> int:
 
 
 def clip_buffer_dir(channel_name: str) -> Path:
-    root = reset_clip_buffer_root()
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    directory = root / f"{timestamp} - {sanitize_filename(channel_name, 'clip')}"
+    root = clip_buffer_root()
+    root.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
+    directory = unique_path(root / f"{timestamp} - {sanitize_filename(channel_name, 'clip')}")
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 

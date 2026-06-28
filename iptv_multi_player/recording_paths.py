@@ -48,7 +48,7 @@ def recording_path(channel_name: str, settings: dict[str, Any]) -> Path:
     directory = effective_recording_dir(settings, create=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     base = f"{timestamp} - {sanitize_filename(channel_name)}"
-    return directory / f"{base}.ts"
+    return unique_path(directory / f"{base}.ts")
 
 
 def unique_path(path: Path) -> Path:

@@ -419,19 +419,23 @@ def api_recording_start():
 
 @app.post("/api/recording/stop")
 def api_recording_stop():
+    payload = request.get_json(silent=True) or {}
+    channel_id = str(payload.get("channel_id", "") or "").strip() or None
     try:
-        return jsonify({"success": True, "data": recording_manager.stop()})
+        return jsonify({"success": True, "data": recording_manager.stop(channel_id)})
     except Exception as exc:  # noqa: BLE001
         return json_error(f"Could not stop recording: {exc}", 502)
 
 
 @app.post("/api/recording/clip/save")
 def api_recording_save_clip():
+    payload = request.get_json(silent=True) or {}
+    channel_id = str(payload.get("channel_id", "") or "").strip() or None
     with state_lock:
         state = read_state()
         settings = state["settings"]
     try:
-        return jsonify({"success": True, "data": recording_manager.save_clip(settings)})
+        return jsonify({"success": True, "data": recording_manager.save_clip(settings, channel_id)})
     except RecordingError as exc:
         return json_error(str(exc))
     except Exception as exc:  # noqa: BLE001
@@ -441,19 +445,22 @@ def api_recording_save_clip():
 @app.post("/api/recording/open")
 def api_recording_open():
     payload = request.get_json(silent=True) or {}
+    channel_id = str(payload.get("channel_id", "") or "").strip() or None
     with state_lock:
         state = read_state()
         settings = state["settings"]
     try:
-        return jsonify({"success": True, "data": recording_manager.open_recording(settings, payload.get("player"))})
+        return jsonify({"success": True, "data": recording_manager.open_recording(settings, payload.get("player"), channel_id)})
     except Exception as exc:  # noqa: BLE001
         return json_error(str(exc))
 
 
 @app.post("/api/recording/reveal")
 def api_recording_reveal():
+    payload = request.get_json(silent=True) or {}
+    channel_id = str(payload.get("channel_id", "") or "").strip() or None
     try:
-        return jsonify({"success": True, "data": recording_manager.reveal_recording()})
+        return jsonify({"success": True, "data": recording_manager.reveal_recording(channel_id)})
     except Exception as exc:  # noqa: BLE001
         return json_error(str(exc))
 

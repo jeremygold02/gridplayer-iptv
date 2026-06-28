@@ -85,7 +85,7 @@ button {
 
 body.recording-footer-visible .channel-list,
 body.recording-footer-visible .detail-panel {
-  padding-bottom: 76px;
+  padding-bottom: var(--recording-footer-offset, 76px);
 }
 
 .topbar {
@@ -1761,6 +1761,12 @@ body.recording-footer-visible .detail-panel {
   bottom: 14px;
   left: 14px;
   display: grid;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.recording-footer-row {
+  display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
@@ -1768,25 +1774,26 @@ body.recording-footer-visible .detail-panel {
   border: 1px solid rgba(255, 90, 95, 0.35);
   background: rgba(18, 23, 23, 0.98);
   box-shadow: var(--shadow);
+  pointer-events: auto;
 }
 
-.recording-footer.preparing {
+.recording-footer-row.preparing {
   border-color: rgba(240, 184, 75, 0.42);
 }
 
-.recording-footer.error {
+.recording-footer-row.error {
   border-color: rgba(255, 90, 95, 0.7);
 }
 
-.recording-footer.stopped {
+.recording-footer-row.stopped {
   border-color: rgba(91, 208, 97, 0.42);
 }
 
-.recording-footer.clipping {
+.recording-footer-row.clipping {
   border-color: rgba(110, 167, 255, 0.44);
 }
 
-.recording-footer.clipping.stopped {
+.recording-footer-row.clipping.stopped {
   border-color: rgba(91, 208, 97, 0.42);
 }
 
@@ -1806,23 +1813,23 @@ body.recording-footer-visible .detail-panel {
   font-variation-settings: "FILL" 1, "wght" 600, "GRAD" 0, "opsz" 20;
 }
 
-.recording-footer.preparing .recording-dot {
+.recording-footer-row.preparing .recording-dot {
   color: var(--amber);
 }
 
-.recording-footer.error .recording-dot {
+.recording-footer-row.error .recording-dot {
   color: var(--red);
 }
 
-.recording-footer.stopped .recording-dot {
+.recording-footer-row.stopped .recording-dot {
   color: var(--green);
 }
 
-.recording-footer.clipping .recording-dot {
+.recording-footer-row.clipping .recording-dot {
   color: var(--blue);
 }
 
-.recording-footer.clipping.stopped .recording-dot {
+.recording-footer-row.clipping.stopped .recording-dot {
   color: var(--green);
 }
 
@@ -1844,7 +1851,7 @@ body.recording-footer-visible .detail-panel {
   font-size: 12px;
 }
 
-#recordingFooterMeta {
+.recording-footer-main span[role="status"] {
   display: -webkit-box;
   max-height: 34px;
   white-space: normal;
@@ -1858,7 +1865,7 @@ body.recording-footer-visible .detail-panel {
   gap: 8px;
 }
 
-#recordingStopButton {
+.recording-stop-button {
   min-width: 108px;
 }
 
@@ -1883,7 +1890,7 @@ body.recording-footer-visible .detail-panel {
 }
 
 body.recording-footer-visible .toast {
-  bottom: 92px;
+  bottom: var(--recording-footer-offset, 92px);
 }
 
 .toast.error {

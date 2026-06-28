@@ -24,6 +24,7 @@ from .recording_clips import (
     clip_segment_count,
     clip_segment_files,
     remux_clip_segments,
+    reset_clip_buffer_root,
     sanitize_clip_seconds,
 )
 from .recording_ffmpeg import (
@@ -462,6 +463,26 @@ def launch_clip_process(command: list[str]) -> tuple[subprocess.Popen, Any]:
     return process, log_handle
 
 
+def stop_recording_process(active: ActiveRecording) -> None:
+    process = active.process
+    if process.poll() is None:
+        try:
+            if process.stdin:
+                process.stdin.write("q\n")
+                process.stdin.flush()
+        except (OSError, ValueError):
+            pass
+        try:
+            process.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                process.wait(timeout=4)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=4)
+
+
 def probe_qualities(url: str, settings: dict[str, Any]) -> tuple[list[QualityOption], FfmpegInfo]:
     ffmpeg = find_ffmpeg(settings)
     if not ffmpeg.available:
@@ -497,6 +518,7 @@ def public_status_from_active(active: ActiveRecording) -> dict[str, Any]:
             except OSError:
                 pass
     return {
+        "id": active.channel_id,
         "active": True,
         "state": state,
         "message": message,
@@ -510,6 +532,7 @@ def public_status_from_active(active: ActiveRecording) -> dict[str, Any]:
         "size_bytes": size,
         "clip_seconds": active.clip_seconds,
         "clip_ready_seconds": min(active.clip_seconds, elapsed) if is_clip else 0,
+        "clip_path": str(active.last_clip_path) if active.last_clip_path else "",
         "retry_count": active.retry_count,
     }
 
@@ -524,6 +547,7 @@ def public_terminal_status(active: ActiveRecording, state: str, message: str) ->
 
 def inactive_status() -> dict[str, Any]:
     return {
+        "id": "",
         "active": False,
         "state": "idle",
         "message": "",
@@ -537,15 +561,44 @@ def inactive_status() -> dict[str, Any]:
         "size_bytes": 0,
         "clip_seconds": 0,
         "clip_ready_seconds": 0,
+        "clip_path": "",
+        "items": [],
+        "active_count": 0,
     }
 
 
 class RecordingManager:
     def __init__(self) -> None:
         self._lock = threading.RLock()
-        self._active: ActiveRecording | None = None
+        self._active: dict[str, ActiveRecording] = {}
         self._last_output_path: Path | None = None
         self._last_status: dict[str, Any] | None = None
+        reset_clip_buffer_root()
+
+    def _active_statuses_locked(self) -> list[dict[str, Any]]:
+        return [
+            public_status_from_active(active)
+            for active in sorted(self._active.values(), key=lambda item: item.started_at)
+        ]
+
+    def _public_status_locked(self, fallback: dict[str, Any] | None = None) -> dict[str, Any]:
+        items = self._active_statuses_locked()
+        if items:
+            status = dict(items[-1])
+            status["items"] = items
+            status["active_count"] = len(items)
+            return status
+
+        status = dict(fallback or self._last_status or inactive_status())
+        status["items"] = []
+        status["active_count"] = 0
+        return status
+
+    def _active_for_channel_locked(self, channel_id: str | None = None, mode: str | None = None) -> ActiveRecording | None:
+        active = self._active.get(channel_id or "") if channel_id else next(iter(self._active.values()), None)
+        if active and mode and active.mode != mode:
+            return None
+        return active
 
     def _schedule_retry_locked(self, active: ActiveRecording, returncode: int | None) -> None:
         active.retry_count += 1
@@ -601,34 +654,34 @@ class RecordingManager:
         active.retry_message = ""
 
     def _clear_finished_locked(self) -> None:
-        if self._active and self._active.process.poll() is not None:
-            active = self._active
+        for active in list(self._active.values()):
+            if active.process.poll() is None:
+                continue
             returncode = active.process.returncode
             if not active.retry_after:
                 close_recording_handles(active)
                 self._schedule_retry_locked(active, returncode)
-                return
+                continue
             if time.time() >= active.retry_after:
                 self._restart_active_locked(active)
 
     def status(self) -> dict[str, Any]:
         with self._lock:
             self._clear_finished_locked()
-            if not self._active:
-                return self._last_status or inactive_status()
-            return public_status_from_active(self._active)
+            return self._public_status_locked()
 
     def prepare(self, channel: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
+        channel_id = str(channel.get("id") or "")
         with self._lock:
             self._clear_finished_locked()
-            if self._active:
+            if channel_id in self._active:
                 return {
                     "ffmpeg": public_ffmpeg(settings),
-                    "recording": self.status(),
+                    "recording": self._public_status_locked(),
                     "qualities": [],
                     "selected_quality_id": "",
                     "can_start": False,
-                    "message": "Another recording or clip buffer is already active.",
+                    "message": "This channel is already recording or buffering a clip.",
                 }
 
         qualities, ffmpeg = probe_qualities(str(channel.get("url") or ""), settings)
@@ -676,10 +729,11 @@ class RecordingManager:
         quality_id: str | None,
         clip_seconds: int = 0,
     ) -> dict[str, Any]:
+        channel_id = str(channel.get("id") or "")
         with self._lock:
             self._clear_finished_locked()
-            if self._active:
-                raise RecordingError("Another recording or clip buffer is already active.")
+            if channel_id in self._active:
+                raise RecordingError("This channel is already recording or buffering a clip.")
 
         qualities, ffmpeg = probe_qualities(str(channel.get("url") or ""), settings)
         if not ffmpeg.available:
@@ -757,7 +811,7 @@ class RecordingManager:
             process, output_handle, log_handle = launch_recording_process(command, output_path, append=False)
 
         active = ActiveRecording(
-            channel_id=str(channel.get("id") or ""),
+            channel_id=channel_id,
             channel_name=channel_name,
             quality_id=quality.id,
             quality_label=quality.label,
@@ -772,7 +826,14 @@ class RecordingManager:
             buffer_dir=buffer_dir,
         )
         with self._lock:
-            self._active = active
+            self._clear_finished_locked()
+            if active.channel_id in self._active:
+                stop_recording_process(active)
+                close_recording_handles(active)
+                if active.mode == "clip":
+                    cleanup_clip_buffer(active)
+                raise RecordingError("This channel is already recording or buffering a clip.")
+            self._active[active.channel_id] = active
             if output_path:
                 self._last_output_path = output_path
             self._last_status = None
@@ -786,43 +847,29 @@ class RecordingManager:
                     f"buffer_dir={active.buffer_dir or ''}",
                 ],
             )
-            return public_status_from_active(active)
+            return self._public_status_locked()
 
-    def stop(self) -> dict[str, Any]:
+    def stop(self, channel_id: str | None = None) -> dict[str, Any]:
         with self._lock:
-            active = self._active
+            active = self._active_for_channel_locked(channel_id)
             if not active:
-                return inactive_status()
+                return self._public_status_locked()
 
         process = active.process
-        if process.poll() is None:
-            try:
-                if process.stdin:
-                    process.stdin.write("q\n")
-                    process.stdin.flush()
-            except (OSError, ValueError):
-                pass
-            try:
-                process.wait(timeout=8)
-            except subprocess.TimeoutExpired:
-                process.terminate()
-                try:
-                    process.wait(timeout=4)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=4)
-
+        stop_recording_process(active)
         close_recording_handles(active)
         with self._lock:
             if active.last_clip_path:
                 self._last_output_path = active.last_clip_path
             elif active.output_path:
                 self._last_output_path = active.output_path
-            self._active = None
+            if self._active.get(active.channel_id) is active:
+                del self._active[active.channel_id]
             active.retry_after = 0.0
             active.retry_message = ""
             message = "Clip buffer stopped." if active.mode == "clip" else "Recording stopped."
-            self._last_status = public_terminal_status(active, "stopped", message)
+            terminal_status = public_terminal_status(active, "stopped", message)
+            self._last_status = terminal_status
             append_recording_log(
                 "recording stopped" if active.mode == "recording" else "clip buffer stopped",
                 [
@@ -835,13 +882,13 @@ class RecordingManager:
             )
             if active.mode == "clip":
                 cleanup_clip_buffer(active)
-            return self._last_status
+            return self._public_status_locked(terminal_status)
 
-    def save_clip(self, settings: dict[str, Any]) -> dict[str, Any]:
+    def save_clip(self, settings: dict[str, Any], channel_id: str | None = None) -> dict[str, Any]:
         with self._lock:
             self._clear_finished_locked()
-            active = self._active
-            if not active or active.mode != "clip":
+            active = self._active_for_channel_locked(channel_id, mode="clip")
+            if not active:
                 raise RecordingError("No clip buffer is active.")
 
             segments = clip_segment_files(active.buffer_dir)
@@ -852,54 +899,58 @@ class RecordingManager:
             if not segments:
                 raise RecordingError("The clip buffer is not ready yet.")
 
-            ffmpeg = find_ffmpeg(settings)
-            if not ffmpeg.available:
-                raise FfmpegMissingError(ffmpeg.message)
+            channel_name = active.channel_name
+            clip_seconds = active.clip_seconds
 
-            output_path = clip_path(active.channel_name, settings)
-            remux_clip_segments(ffmpeg.ffmpeg_path, segments, output_path)
+        ffmpeg = find_ffmpeg(settings)
+        if not ffmpeg.available:
+            raise FfmpegMissingError(ffmpeg.message)
 
-            if not output_path.exists() or output_path.stat().st_size == 0:
-                raise RecordingError("Could not save clip because the buffer was empty.")
+        output_path = clip_path(channel_name, settings)
+        remux_clip_segments(ffmpeg.ffmpeg_path, segments, output_path)
 
+        if not output_path.exists() or output_path.stat().st_size == 0:
+            raise RecordingError("Could not save clip because the buffer was empty.")
+
+        with self._lock:
             active.last_clip_path = output_path
             self._last_output_path = output_path
             append_recording_log(
                 "clip saved",
                 [
-                    f"channel={active.channel_name}",
-                    f"clip_seconds={active.clip_seconds}",
+                    f"channel={channel_name}",
+                    f"clip_seconds={clip_seconds}",
                     f"segments={len(segments)}",
                     f"output_path={output_path}",
                 ],
             )
-            status = public_status_from_active(active)
-            status["clip_path"] = str(output_path)
-            return status
+            return self._public_status_locked()
 
-    def active_or_last_path(self) -> Path | None:
+    def active_or_last_path(self, channel_id: str | None = None) -> Path | None:
         with self._lock:
             self._clear_finished_locked()
-            if self._active:
-                return self._active.last_clip_path if self._active.mode == "clip" else self._active.output_path
+            active = self._active_for_channel_locked(channel_id)
+            if active:
+                return active.last_clip_path if active.mode == "clip" else active.output_path
             return self._last_output_path
 
-    def active_or_last_reveal_path(self) -> Path | None:
+    def active_or_last_reveal_path(self, channel_id: str | None = None) -> Path | None:
         with self._lock:
             self._clear_finished_locked()
-            if self._active:
-                return self._active.last_clip_path if self._active.mode == "clip" else self._active.output_path
+            active = self._active_for_channel_locked(channel_id)
+            if active:
+                return active.last_clip_path if active.mode == "clip" else active.output_path
             return self._last_output_path
 
-    def open_recording(self, settings: dict[str, Any], player_id: Any = None) -> dict[str, Any]:
-        path = self.active_or_last_path()
+    def open_recording(self, settings: dict[str, Any], player_id: Any = None, channel_id: str | None = None) -> dict[str, Any]:
+        path = self.active_or_last_path(channel_id)
         if not path or not path.exists():
             raise RecordingError("Recording file was not found.")
         player, executable = launch_player([str(path)], settings, player_id)
         return {"path": str(path), "player": player, "label": player_label(player, settings)}
 
-    def reveal_recording(self) -> dict[str, Any]:
-        path = self.active_or_last_reveal_path()
+    def reveal_recording(self, channel_id: str | None = None) -> dict[str, Any]:
+        path = self.active_or_last_reveal_path(channel_id)
         if not path or not path.exists():
             raise RecordingError("Recording file was not found.")
 

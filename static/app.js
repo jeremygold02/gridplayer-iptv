@@ -72,10 +72,12 @@ let launchUpdateChecked = false;
 let pendingUpdate = null;
 let updateProgressTimer = null;
 let recordingState = { active: false };
-let recordingStopping = false;
+const recordingStoppingIds = new Set();
+const recordingSavingClipIds = new Set();
 let recordingFooterDismissed = false;
 let pendingRecording = null;
-let recordingProbeToken = 0;
+let pendingRecordingDismissId = null;
+const recordingProbeTokens = new Map();
 let pendingSourceRemovalId = null;
 let pendingSourceRenameId = null;
 let pendingCustomFilterEditorId = "";
@@ -902,8 +904,84 @@ function formatBytes(bytes) {
   return `${value} B`;
 }
 
+function recordingId(status) {
+  return String(status?.id || status?.channel_id || "");
+}
+
+function recordingStatusCanShowSingle(status = recordingState) {
+  const state = recordingStatusKind(status);
+  return Boolean(status?.active || ["preparing", "starting", "waiting", "retrying", "error", "stopped"].includes(state));
+}
+
+function normalizeRecordingItem(item) {
+  return {
+    ...item,
+    id: recordingId(item),
+  };
+}
+
+function recordingItems(status = recordingState) {
+  if (Array.isArray(status?.items)) {
+    const items = status.items.filter(Boolean).map(normalizeRecordingItem);
+    return items.length || !recordingStatusCanShowSingle(status) ? items : [normalizeRecordingItem(status)];
+  }
+  return recordingStatusCanShowSingle(status) ? [normalizeRecordingItem(status)] : [];
+}
+
+function recordingAggregateFromItems(items, preferredId = "") {
+  const normalizedItems = items.filter(Boolean).map(normalizeRecordingItem);
+  const activeItems = normalizedItems.filter((item) => item.active);
+  const preferred = preferredId
+    ? normalizedItems.find((item) => recordingId(item) === preferredId || item.channel_id === preferredId)
+    : null;
+  const primary = preferred
+    || activeItems[activeItems.length - 1]
+    || normalizedItems[normalizedItems.length - 1]
+    || { active: false, state: "idle", mode: "recording" };
+  return {
+    ...primary,
+    active: activeItems.length > 0,
+    items: normalizedItems,
+    active_count: activeItems.length,
+  };
+}
+
+function normalizeRecordingStatus(status) {
+  if (!status) {
+    return recordingAggregateFromItems([]);
+  }
+  const items = recordingItems(status);
+  if (!items.length) {
+    return {
+      ...status,
+      items: [],
+      active_count: 0,
+    };
+  }
+  return {
+    ...recordingAggregateFromItems(items, recordingId(status)),
+    ...status,
+    active: items.some((item) => item.active),
+    items,
+    active_count: items.filter((item) => item.active).length,
+  };
+}
+
+function activeRecordingItems(status = recordingState) {
+  return recordingItems(status).filter((item) => item.active);
+}
+
+function recordingItemById(id, status = recordingState) {
+  const key = String(id || "");
+  return recordingItems(status).find((item) => recordingId(item) === key || item.channel_id === key) || null;
+}
+
+function recordingForChannel(channelId, status = recordingState) {
+  return activeRecordingItems(status).find((item) => item.channel_id === channelId) || null;
+}
+
 function isRecordingChannel(channelId) {
-  return Boolean(recordingState?.active && recordingState.channel_id === channelId);
+  return Boolean(recordingForChannel(channelId));
 }
 
 function isClipMode(status = recordingState) {
@@ -911,13 +989,14 @@ function isClipMode(status = recordingState) {
 }
 
 function recordingBlocksChannel(channelId) {
-  return Boolean(recordingState?.active && recordingState.channel_id !== channelId);
+  return false;
 }
 
 function recordingButtonHtml(channelId, compact = true) {
-  const isActive = isRecordingChannel(channelId);
+  const activeRecording = recordingForChannel(channelId);
+  const isActive = Boolean(activeRecording);
   const blocked = recordingBlocksChannel(channelId);
-  const clipActive = isActive && isClipMode();
+  const clipActive = isActive && isClipMode(activeRecording);
   const title = isActive ? (clipActive ? "Stop clip buffer" : "Stop recording") : "Record stream";
   const buttonClass = compact ? "icon-button record-button" : "secondary-button record-button detail-record-button";
   return `
@@ -932,32 +1011,47 @@ function recordingStatusKind(status = recordingState) {
   return status?.state || (status?.active ? "recording" : "idle");
 }
 
-function recordingStatusKey(status = recordingState) {
+function recordingStatusKeySingle(status = recordingState) {
   return [
     recordingStatusKind(status),
     status?.mode || "",
     status?.active ? "active" : "inactive",
+    status?.local ? "local" : "server",
     status?.channel_id || "",
     status?.output_path || "",
     status?.message || "",
   ].join("|");
 }
 
+function recordingStatusKey(status = recordingState) {
+  const items = recordingItems(status);
+  if (items.length) {
+    return items.map(recordingStatusKeySingle).join("||");
+  }
+  return recordingStatusKeySingle(status);
+}
+
 function recordingFooterShouldShow(status = recordingState) {
+  const items = recordingItems(status);
+  if (items.some((item) => item.active)) return true;
   if (recordingFooterDismissed) return false;
-  const state = recordingStatusKind(status);
-  return Boolean(status?.active || state === "stopped" || (state === "error" && status?.output_path));
+  return items.some((item) => {
+    const state = recordingStatusKind(item);
+    return state === "stopped" || (state === "error" && item.output_path);
+  });
 }
 
 function recordingStatusCanShow(status = recordingState) {
-  const state = recordingStatusKind(status);
-  return Boolean(status?.active || ["preparing", "starting", "waiting", "retrying", "error", "stopped"].includes(state));
+  const items = recordingItems(status);
+  return items.length
+    ? items.some(recordingStatusCanShowSingle)
+    : recordingStatusCanShowSingle(status);
 }
 
 function setRecordingStatus(status, options = {}) {
   const previousKey = recordingStatusKey();
-  const nextStatus = status || { active: false, state: "idle" };
-  if (!options.force && recordingStatusKind(nextStatus) === "idle" && recordingStatusCanShow(recordingState) && !recordingState.active) {
+  const nextStatus = normalizeRecordingStatus(status || { active: false, state: "idle" });
+  if (!options.force && recordingStatusKind(nextStatus) === "idle" && recordingStatusCanShow(recordingState) && !activeRecordingItems(recordingState).length) {
     return;
   }
   recordingState = nextStatus;
@@ -968,7 +1062,7 @@ function setRecordingStatus(status, options = {}) {
 
 function setLocalRecordingStatus(channelId, state, message, extra = {}) {
   const channel = channelById(channelId);
-  setRecordingStatus({
+  const item = {
     active: false,
     local: true,
     state,
@@ -981,14 +1075,24 @@ function setLocalRecordingStatus(channelId, state, message, extra = {}) {
     elapsed_seconds: 0,
     size_bytes: 0,
     ...extra,
-  }, { show: true });
+  };
+  const items = [
+    ...recordingItems(recordingState).filter((recording) => recording.channel_id !== channelId),
+    item,
+  ];
+  setRecordingStatus(recordingAggregateFromItems(items, channelId), { show: true });
   render();
 }
 
 function shouldKeepLocalRecordingStatus(serverStatus) {
-  if (!recordingState?.local || serverStatus?.active) return false;
-  const localState = recordingStatusKind(recordingState);
-  if (!["preparing", "starting", "waiting", "retrying", "error"].includes(localState)) return false;
+  const serverItems = recordingItems(serverStatus);
+  const serverIds = new Set(serverItems.map((item) => item.channel_id));
+  const localItems = recordingItems(recordingState).filter((item) => {
+    const localState = recordingStatusKind(item);
+    return item.local && !serverIds.has(item.channel_id) && ["preparing", "starting", "waiting", "retrying", "error"].includes(localState);
+  });
+  if (!localItems.length) return false;
+  setRecordingStatus(recordingAggregateFromItems([...serverItems, ...localItems]), { force: true });
   return true;
 }
 
@@ -1331,30 +1435,15 @@ async function openChannel(channelId) {
   showToast(`Opened in ${data.label || playerLabel}`);
 }
 
-function renderRecordingFooter() {
-  const state = recordingStatusKind();
-  const active = Boolean(recordingState?.active);
-  const clipMode = isClipMode();
-  const stopping = Boolean(recordingStopping && active);
-  const visible = recordingFooterShouldShow();
-  const hasFile = Boolean(recordingState?.output_path);
-  const hasRevealPath = hasFile;
-  document.body.classList.toggle("recording-active", active);
-  document.body.classList.toggle("recording-footer-visible", visible);
-  els.recordingFooter.hidden = !visible;
-  if (!visible) return;
+function recordingFooterIconName(state, clipMode) {
+  if (state === "error") return "error";
+  if (state === "stopped") return "check_circle";
+  if (state === "retrying") return "sync";
+  return clipMode ? "content_cut" : "download";
+}
 
-  els.recordingFooter.classList.toggle("preparing", ["preparing", "starting", "waiting", "retrying"].includes(state));
-  els.recordingFooter.classList.toggle("error", state === "error");
-  els.recordingFooter.classList.toggle("stopped", state === "stopped");
-  els.recordingFooter.classList.toggle("active", active);
-  els.recordingFooter.classList.toggle("clipping", clipMode);
-  els.recordingFooter.classList.toggle("stopping", stopping);
-  els.recordingFooterIcon.textContent = state === "error"
-    ? "error"
-    : (state === "stopped" ? "check_circle" : (state === "retrying" ? "sync" : (clipMode ? "content_cut" : "download")));
-
-  const stateTitle = {
+function recordingFooterStateTitle(state, clipMode) {
+  return {
     preparing: clipMode ? "Preparing Clip Buffer" : "Preparing Recording",
     starting: clipMode ? "Starting Clip Buffer" : "Starting Recording",
     waiting: clipMode ? "Clip Buffer Ready" : "Recording Ready",
@@ -1363,37 +1452,102 @@ function renderRecordingFooter() {
     stopped: clipMode ? "Clip Buffer Stopped" : "Recording Stopped",
     recording: clipMode ? "Clip Buffer" : "Recording",
   }[state] || (clipMode ? "Clip Buffer" : "Recording");
-  els.recordingFooterTitle.textContent = `${stateTitle}: ${recordingState.channel_name || "Stream"}`;
+}
 
+function recordingFooterMeta(item, state, clipMode) {
   const metaParts = [];
-  if (recordingState.message && state !== "recording") {
-    metaParts.push(recordingState.message);
+  if (item.message && state !== "recording") {
+    metaParts.push(item.message);
   }
-  if (clipMode && active) {
-    metaParts.push(`${formatElapsed(recordingState.clip_ready_seconds)} buffered`);
-    metaParts.push(`${formatElapsed(recordingState.clip_seconds)} window`);
-    metaParts.push(recordingState.quality_label || "Source");
-    metaParts.push(formatBytes(recordingState.size_bytes));
-  } else if (active || state === "stopped" || hasFile) {
-    metaParts.push(formatElapsed(recordingState.elapsed_seconds));
-    metaParts.push(recordingState.quality_label || "Source");
-    metaParts.push(formatBytes(recordingState.size_bytes));
+  if (clipMode && item.active) {
+    metaParts.push(`${formatElapsed(item.clip_ready_seconds)} buffered`);
+    metaParts.push(`${formatElapsed(item.clip_seconds)} window`);
+    metaParts.push(item.quality_label || "Source");
+    metaParts.push(formatBytes(item.size_bytes));
+  } else if (item.active || state === "stopped" || item.output_path) {
+    metaParts.push(formatElapsed(item.elapsed_seconds));
+    metaParts.push(item.quality_label || "Source");
+    metaParts.push(formatBytes(item.size_bytes));
   }
-  els.recordingFooterMeta.textContent = metaParts.filter(Boolean).join(" · ");
-  els.recordingSaveClipButton.hidden = !(clipMode && active);
-  els.recordingSaveClipButton.disabled = !(clipMode && active) || stopping;
-  els.recordingOpenButton.disabled = !hasFile;
-  els.recordingRevealButton.disabled = !hasRevealPath;
-  els.recordingStopButton.hidden = !active;
-  els.recordingStopButton.disabled = stopping;
-  els.recordingStopButton.classList.toggle("is-loading", stopping);
-  els.recordingStopButton.setAttribute("aria-busy", String(stopping));
-  const stopIcon = els.recordingStopButton.querySelector(".recording-stop-icon");
-  const stopSpinner = els.recordingStopButton.querySelector(".recording-stop-spinner");
-  const stopLabel = els.recordingStopButton.querySelector(".recording-stop-label");
-  if (stopIcon) stopIcon.hidden = stopping;
-  if (stopSpinner) stopSpinner.hidden = !stopping;
-  if (stopLabel) stopLabel.textContent = stopping ? "Stopping" : "Stop";
+  return metaParts.filter(Boolean).join(" · ");
+}
+
+function visibleRecordingFooterItems(status = recordingState) {
+  return recordingItems(status).filter((item) => {
+    const state = recordingStatusKind(item);
+    return item.active || state === "stopped" || (state === "error" && item.output_path);
+  });
+}
+
+function recordingFooterItemHtml(item) {
+  const id = recordingId(item);
+  const state = recordingStatusKind(item);
+  const clipMode = isClipMode(item);
+  const active = Boolean(item.active);
+  const stopping = recordingStoppingIds.has(id);
+  const savingClip = recordingSavingClipIds.has(id);
+  const hasFile = Boolean(item.output_path);
+  const classes = ["recording-footer-row"];
+  if (["preparing", "starting", "waiting", "retrying"].includes(state)) classes.push("preparing");
+  if (state === "error") classes.push("error");
+  if (state === "stopped") classes.push("stopped");
+  if (active) classes.push("active");
+  if (clipMode) classes.push("clipping");
+  if (stopping) classes.push("stopping");
+  return `
+    <section class="${classes.join(" ")}" data-recording-id="${escapeHtml(id)}">
+      <div class="recording-footer-main">
+        <span class="material-icons recording-dot" aria-hidden="true">${recordingFooterIconName(state, clipMode)}</span>
+        <div>
+          <strong>${escapeHtml(recordingFooterStateTitle(state, clipMode))}: ${escapeHtml(item.channel_name || "Stream")}</strong>
+          <span role="status" aria-live="polite">${escapeHtml(recordingFooterMeta(item, state, clipMode))}</span>
+        </div>
+      </div>
+      <div class="recording-footer-actions">
+        ${clipMode && active ? `
+          <button class="secondary-button" data-recording-footer-action="save" data-recording-id="${escapeHtml(id)}" type="button" ${stopping || savingClip ? "disabled" : ""}>
+            <span class="material-icons" aria-hidden="true">content_cut</span>
+            <span>${savingClip ? "Saving" : "Save Clip"}</span>
+          </button>
+        ` : ""}
+        <button class="secondary-button" data-recording-footer-action="open" data-recording-id="${escapeHtml(id)}" type="button" ${hasFile ? "" : "disabled"}>
+          <span class="material-icons" aria-hidden="true">play_circle</span>
+          <span>Open File</span>
+        </button>
+        <button class="secondary-button" data-recording-footer-action="reveal" data-recording-id="${escapeHtml(id)}" type="button" ${hasFile ? "" : "disabled"}>
+          <span class="material-icons" aria-hidden="true">folder_open</span>
+          <span>Reveal Folder</span>
+        </button>
+        ${active ? `
+          <button class="primary-button danger-button recording-stop-button ${stopping ? "is-loading" : ""}" data-recording-footer-action="stop" data-recording-id="${escapeHtml(id)}" type="button" ${stopping ? "disabled" : ""} aria-busy="${String(stopping)}">
+            <span class="material-icons recording-stop-icon" aria-hidden="true" ${stopping ? "hidden" : ""}>stop_circle</span>
+            <span class="button-spinner recording-stop-spinner" aria-hidden="true" ${stopping ? "" : "hidden"}></span>
+            <span class="recording-stop-label">${stopping ? "Stopping" : "Stop"}</span>
+          </button>
+        ` : ""}
+        <button class="icon-button recording-dismiss-button" data-recording-footer-action="dismiss" data-recording-id="${escapeHtml(id)}" type="button" title="Close recording footer" aria-label="Close recording footer">
+          <span class="material-icons" aria-hidden="true">close</span>
+        </button>
+      </div>
+    </section>
+  `;
+}
+
+function renderRecordingFooter() {
+  const items = visibleRecordingFooterItems();
+  const active = activeRecordingItems().length > 0;
+  const visible = recordingFooterShouldShow() && items.length > 0;
+  document.body.classList.toggle("recording-active", active);
+  document.body.classList.toggle("recording-footer-visible", visible);
+  els.recordingFooter.hidden = !visible;
+  if (!visible) {
+    els.recordingFooter.innerHTML = "";
+    document.body.style.setProperty("--recording-footer-offset", "0px");
+    return;
+  }
+
+  els.recordingFooter.innerHTML = items.map(recordingFooterItemHtml).join("");
+  document.body.style.setProperty("--recording-footer-offset", `${els.recordingFooter.offsetHeight + 28}px`);
 }
 
 async function refreshRecordingStatus() {
@@ -1589,7 +1743,8 @@ function recordingQualityOptionsFromModal() {
 }
 
 async function prepareRecording(channelId, options = {}) {
-  const probeToken = ++recordingProbeToken;
+  const probeToken = (recordingProbeTokens.get(channelId) || 0) + 1;
+  recordingProbeTokens.set(channelId, probeToken);
   const clipEnabled = Boolean(options.clip_enabled);
   const clipSeconds = sanitizeClipSeconds(options.clip_seconds);
   const localMode = {
@@ -1605,13 +1760,13 @@ async function prepareRecording(channelId, options = {}) {
       body: JSON.stringify({ channel_id: channelId, recording_options: options }),
     });
   } catch (error) {
-    if (probeToken !== recordingProbeToken) return;
+    if (probeToken !== recordingProbeTokens.get(channelId)) return;
     setLocalRecordingStatus(channelId, "error", error.message, localMode);
     showRecordingQualityErrorModal(channelId, error.message, options);
     showToast(error.message, "error");
     return;
   }
-  if (probeToken !== recordingProbeToken) return;
+  if (probeToken !== recordingProbeTokens.get(channelId)) return;
   if (!data.ffmpeg?.available) {
     pendingRecording = { channel_id: channelId, options };
     setLocalRecordingStatus(channelId, "error", data.ffmpeg?.message || "FFmpeg is not installed or was not found.", localMode);
@@ -1681,14 +1836,31 @@ async function confirmRecordingOptions() {
   }
 }
 
-async function stopRecording(options = {}) {
-  if (recordingStopping) return;
-  const stoppingClip = isClipMode();
-  recordingStopping = true;
+function setRecordingActionError(recordingTargetId, message) {
+  const key = String(recordingTargetId || "");
+  const items = recordingItems(recordingState).map((item) => (
+    recordingId(item) === key ? { ...item, state: "error", message } : item
+  ));
+  if (!items.length) {
+    setRecordingStatus({ ...recordingState, state: "error", message }, { show: true });
+    return;
+  }
+  setRecordingStatus(recordingAggregateFromItems(items, key), { force: true, show: true });
+}
+
+async function stopRecording(recordingTargetId = "", options = {}) {
+  const target = recordingTargetId ? recordingItemById(recordingTargetId) : activeRecordingItems()[0];
+  const targetId = String(recordingTargetId || recordingId(target) || "");
+  if (recordingStoppingIds.has(targetId)) return;
+  const stoppingClip = isClipMode(target);
+  recordingStoppingIds.add(targetId);
   renderRecordingFooter();
   try {
-    const status = await api("/api/recording/stop", { method: "POST" });
-    recordingStopping = false;
+    const status = await api("/api/recording/stop", {
+      method: "POST",
+      body: JSON.stringify(targetId ? { channel_id: targetId } : {}),
+    });
+    recordingStoppingIds.delete(targetId);
     setRecordingStatus(status, { show: !options.dismiss });
     if (options.dismiss) {
       recordingFooterDismissed = true;
@@ -1696,15 +1868,17 @@ async function stopRecording(options = {}) {
     render();
     showToast(stoppingClip ? "Clip buffer stopped" : "Recording stopped");
   } catch (error) {
-    recordingStopping = false;
-    setRecordingStatus({ ...recordingState, state: "error", message: error.message }, { show: true });
+    recordingStoppingIds.delete(targetId);
+    setRecordingActionError(targetId, error.message);
     render();
     throw error;
   }
 }
 
-function dismissRecordingFooter() {
-  if (recordingState?.active) {
+function dismissRecordingFooter(recordingTargetId = "") {
+  const target = recordingTargetId ? recordingItemById(recordingTargetId) : activeRecordingItems()[0];
+  if (target?.active) {
+    pendingRecordingDismissId = recordingId(target);
     openModal(els.recordingDismissModal);
     return;
   }
@@ -1715,7 +1889,8 @@ function dismissRecordingFooter() {
 async function confirmDismissRecordingFooter() {
   els.confirmDismissRecordingButton.disabled = true;
   try {
-    await stopRecording({ dismiss: true });
+    await stopRecording(pendingRecordingDismissId, { dismiss: true });
+    pendingRecordingDismissId = null;
     closeModals();
   } catch (error) {
     showToast(error.message, "error");
@@ -1725,12 +1900,9 @@ async function confirmDismissRecordingFooter() {
 }
 
 async function handleRecordChannel(channelId) {
-  if (isRecordingChannel(channelId)) {
-    await stopRecording();
-    return;
-  }
-  if (recordingState?.active) {
-    showToast("Stop the current recording or clip buffer before starting another.", "error");
+  const activeRecording = recordingForChannel(channelId);
+  if (activeRecording) {
+    await stopRecording(recordingId(activeRecording));
     return;
   }
   const options = defaultRecordingOptions();
@@ -1738,29 +1910,65 @@ async function handleRecordChannel(channelId) {
   await prepareRecording(channelId, options);
 }
 
-async function openRecordingFile() {
+async function openRecordingFile(recordingTargetId = "") {
   const data = await api("/api/recording/open", {
     method: "POST",
-    body: JSON.stringify({ player: selectedPlayerId() }),
+    body: JSON.stringify({
+      player: selectedPlayerId(),
+      ...(recordingTargetId ? { channel_id: recordingTargetId } : {}),
+    }),
   });
   showToast(`Opened recording in ${data.label || selectedPlayerLabel()}`);
 }
 
-async function revealRecordingFile() {
-  await api("/api/recording/reveal", { method: "POST" });
+async function revealRecordingFile(recordingTargetId = "") {
+  await api("/api/recording/reveal", {
+    method: "POST",
+    body: JSON.stringify(recordingTargetId ? { channel_id: recordingTargetId } : {}),
+  });
 }
 
-async function saveClip() {
-  els.recordingSaveClipButton.disabled = true;
+async function saveClip(recordingTargetId = "") {
+  const targetId = String(recordingTargetId || "");
+  if (recordingSavingClipIds.has(targetId)) return;
+  recordingSavingClipIds.add(targetId);
+  renderRecordingFooter();
   try {
-    const status = await api("/api/recording/clip/save", { method: "POST" });
+    const status = await api("/api/recording/clip/save", {
+      method: "POST",
+      body: JSON.stringify(targetId ? { channel_id: targetId } : {}),
+    });
     setRecordingStatus(status, { show: true });
     render();
     showToast("Clip saved");
   } catch (error) {
-    setRecordingStatus({ ...recordingState, state: "error", message: error.message }, { show: true });
+    setRecordingActionError(targetId, error.message);
     render();
     throw error;
+  } finally {
+    recordingSavingClipIds.delete(targetId);
+    renderRecordingFooter();
+  }
+}
+
+async function handleRecordingFooterClick(event) {
+  const button = eventTargetElement(event)?.closest("[data-recording-footer-action]");
+  if (!button) return;
+  const recordingTargetId = button.dataset.recordingId || "";
+  try {
+    if (button.dataset.recordingFooterAction === "open") {
+      await openRecordingFile(recordingTargetId);
+    } else if (button.dataset.recordingFooterAction === "reveal") {
+      await revealRecordingFile(recordingTargetId);
+    } else if (button.dataset.recordingFooterAction === "save") {
+      await saveClip(recordingTargetId);
+    } else if (button.dataset.recordingFooterAction === "stop") {
+      await stopRecording(recordingTargetId);
+    } else if (button.dataset.recordingFooterAction === "dismiss") {
+      dismissRecordingFooter(recordingTargetId);
+    }
+  } catch (error) {
+    showToast(error.message, "error");
   }
 }
 
@@ -2801,39 +3009,7 @@ function bindEvents() {
     }
   });
 
-  els.recordingOpenButton.addEventListener("click", async () => {
-    try {
-      await openRecordingFile();
-    } catch (error) {
-      showToast(error.message, "error");
-    }
-  });
-
-  els.recordingRevealButton.addEventListener("click", async () => {
-    try {
-      await revealRecordingFile();
-    } catch (error) {
-      showToast(error.message, "error");
-    }
-  });
-
-  els.recordingSaveClipButton.addEventListener("click", async () => {
-    try {
-      await saveClip();
-    } catch (error) {
-      showToast(error.message, "error");
-    }
-  });
-
-  els.recordingStopButton.addEventListener("click", async () => {
-    try {
-      await stopRecording();
-    } catch (error) {
-      showToast(error.message, "error");
-    }
-  });
-
-  els.recordingDismissButton.addEventListener("click", dismissRecordingFooter);
+  els.recordingFooter.addEventListener("click", handleRecordingFooterClick);
   els.confirmDismissRecordingButton.addEventListener("click", confirmDismissRecordingFooter);
 
   els.playerSelect.addEventListener("change", async () => {
@@ -3112,8 +3288,7 @@ function initEls() {
     "recordingQualityTitle", "recordingQualityLoading", "recordingQualityLoadingText", "recordingQualityFields", "recordingQualityControls",
     "recordingQualityMessage", "recordingQualityDirInput", "recordingQualityDirPickerButton", "recordingQualityClipToggle",
     "recordingQualityClipDurationField", "recordingQualityClipDurationSelect", "recordingQualityActions", "startRecordingQualityButton",
-    "recordingFooter", "recordingFooterIcon", "recordingFooterTitle", "recordingFooterMeta",
-    "recordingSaveClipButton", "recordingOpenButton", "recordingRevealButton", "recordingStopButton", "recordingDismissButton",
+    "recordingFooter",
     "recordingDismissModal", "confirmDismissRecordingButton", "aboutButton", "aboutModal", "aboutVersion", "aboutRepoLink",
     "checkUpdatesButton", "aboutInstallUpdateButton", "updateStatus", "updateModal",
     "updateCurrentVersion", "updateLatestVersion", "updateReleaseLink", "updateInstallStatus",
