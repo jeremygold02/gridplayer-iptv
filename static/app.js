@@ -833,6 +833,28 @@ function streamType(url) {
   return "URL";
 }
 
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    if (!document.execCommand("copy")) {
+      throw new Error("Copy command was not available.");
+    }
+  } finally {
+    textarea.remove();
+  }
+}
+
 function recordingConfig() {
   return appState?.recording || {};
 }
@@ -1396,6 +1418,10 @@ function renderDetail() {
       </div>
       <div class="detail-actions" data-channel-id="${channel.id}">
         ${recordingButtonHtml(channel.id, false)}
+        <button class="secondary-button" data-detail-action="copy-url" type="button">
+          ${iconHtml("content_copy")}
+          <span>Copy URL</span>
+        </button>
         <button class="primary-button" data-detail-action="open" type="button">
           ${iconHtml("open_in_new")}
           <span>Open in ${escapeHtml(playerLabel)}</span>
@@ -1433,6 +1459,16 @@ async function openChannel(channelId) {
     pendingChannelOpens.delete(openKey);
   });
   showToast(`Opened in ${data.label || playerLabel}`);
+}
+
+async function copyChannelUrl(channelId) {
+  const channel = channelById(channelId);
+  const url = String(channel?.url || "");
+  if (!url) {
+    throw new Error("No stream URL is available for this channel.");
+  }
+  await copyTextToClipboard(url);
+  showToast("Stream URL copied");
 }
 
 function recordingFooterIconName(state, clipMode) {
@@ -3256,6 +3292,8 @@ function bindEvents() {
         await openChannel(actions.dataset.channelId);
       } else if (action === "record") {
         await handleRecordChannel(actions.dataset.channelId);
+      } else if (action === "copy-url") {
+        await copyChannelUrl(actions.dataset.channelId);
       }
     } catch (error) {
       showToast(error.message, "error");
